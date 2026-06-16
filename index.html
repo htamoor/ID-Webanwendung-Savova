@@ -276,16 +276,23 @@ function save(){
 async function speichereInSupabase(neueLeerung) {
   try {
     const { data, error } = await supabase
-      .from('leerungen') // Name deiner Tabelle in Supabase
+      .from('leerungen') 
       .insert([
         { 
           id: neueLeerung.id, 
           datum: neueLeerung.datum, 
           uhrzeit: neueLeerung.uhrzeit, 
-          behaelter_id: neueLeerung.behaelterId, 
+          behaelterId: neueLeerung.behaelterId, // KORRIGIERT: Entspricht jetzt exakt deinem Screenshot!
           bemerkung: neueLeerung.bemerkung 
         }
       ]);
+
+    if (error) throw error;
+    console.log("Erfolgreich in Cloud gespeichert:", data);
+  } catch (error) {
+    console.error("Supabase-Fehler beim Speichern:", error.message);
+  }
+}
 
     if (error) throw error;
     console.log("Erfolgreich in Cloud gespeichert:", data);
