@@ -276,15 +276,14 @@ function save(){
 async function speichereInSupabase(neueLeerung) {
   try {
     const { data, error } = await supabase
-      .from('leerungen') // Name deiner Tabelle in Supabase
+      .from('leerungen') 
       .insert([
         { 
-          // Die 'id' lassen wir weg, da Supabase (bigint identity) diese automatisch generiert!
-          behaelter_id: neueLeerung.behaelterId, // Korrigiert: Entspricht exakt deinem SQL-Schema behaelter_id
+          behaelter_id: neueLeerung.behaelterId, 
           datum: neueLeerung.datum, 
           uhrzeit: neueLeerung.uhrzeit, 
-          bemerkung: neueLeerung.bemerkung 
-          // 'anzahl' wird in Supabase automatisch auf 1 gesetzt (default 1)
+          bemerkung: neueLeerung.bemerkung,
+          anzahl: 1 // NEU: Verhindert den "null value" Fehler in der Datenbank!
         }
       ]);
 
@@ -292,8 +291,8 @@ async function speichereInSupabase(neueLeerung) {
     console.log("Erfolgreich in Cloud gespeichert:", data);
   } catch (error) {
     console.error("Supabase-Fehler beim Speichern:", error.message);
-    // VITALER TEST: Falls doch noch was hakt, zeigt uns das iPhone sofort den Grund!
-    alert("Supabase Cloud-Fehler: " + error.message);
+    // Pop-up falls doch noch eine andere Kleinigkeit blockiert
+    alert("Supabase Cloud-Fehler:\n" + error.message);
   }
 }
 
