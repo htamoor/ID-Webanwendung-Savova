@@ -259,7 +259,7 @@ const SUPABASE_URL = "https://bcdejuyjxyzqpoleogby.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJjZGVqdXlqeHl6cXBvbGVvZ2J5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NzI2NTMsImV4cCI6MjA5NzE0ODY1M30.8tuj9KlRN5xk59WdefRB_nY2S0iE4QzvIZRVK615FS8"; // Dein Anon-Key
 
 // 2. Client erstellen
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let leerungen = JSON.parse(localStorage.getItem('din_leerungen')||'[]');
 let behaelter = JSON.parse(localStorage.getItem('din_behaelter')||'[]');
