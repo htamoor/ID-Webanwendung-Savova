@@ -282,7 +282,7 @@ async function speichereInSupabase(neueLeerung) {
           id: neueLeerung.id, 
           datum: neueLeerung.datum, 
           uhrzeit: neueLeerung.uhrzeit, 
-          behaelterId: neueLeerung.behaelterId, // KORRIGIERT: Entspricht jetzt exakt deinem Screenshot!
+          behaelterId: neueLeerung.behaelterId, 
           bemerkung: neueLeerung.bemerkung 
         }
       ]);
@@ -292,15 +292,7 @@ async function speichereInSupabase(neueLeerung) {
   } catch (error) {
     console.error("Supabase-Fehler beim Speichern:", error.message);
   }
-}
-
-    if (error) throw error;
-    console.log("Erfolgreich in Cloud gespeichert:", data);
-  } catch (error) {
-    console.error("Supabase-Fehler beim Speichern:", error.message);
-    // Hier könntest du einen lokalen Fallback (localStorage) triggern!
-  }
-}
+} // <-- Nur diese eine Klammer schließt die Funktion ab. Danach kommt nichts mehr!
 
 async function ladeDatenAusSupabase() {
   try {
