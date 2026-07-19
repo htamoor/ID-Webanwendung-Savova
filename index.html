@@ -419,7 +419,13 @@ function renderTabelle(){
   const bMap={};behaelter.forEach(b=>bMap[b.id]=b);
   tb.innerHTML=data.map(l=>{const b=bMap[l.behaelterId]||{};return`<tr><td>${l.datum}</td><td style="color:var(--color-text-secondary)">${l.uhrzeit||'–'}</td><td style="font-weight:500">${l.behaelterId}</td><td style="color:var(--color-text-secondary)">${b.name||'–'}</td><td><span class="tag tag-ok">${l.anzahl||1}×</span></td><td style="color:var(--color-text-secondary);max-width:120px;overflow:hidden;text-overflow:ellipsis">${l.bemerkung||'–'}</td><td><span class="tag tag-ok">Erfasst</span></td><td><button class="btn btn-sm" onclick="delLeerung('${l.id}')"><i class="ti ti-trash"></i></button></td></tr>`;}).join('');
 }
-function delLeerung(id){if(!confirm('Eintrag wirklich löschen?'))return;loescheInSupabase(id);leerungen=leerungen.filter(l=>l.id!==id);save();renderTabelle();buildFilter();updateMetrics();renderLetzt();}
+function delBehaelter(id){
+  if(!confirm('Behälter '+id+' wirklich lokal von diesem Gerät löschen?')) return;
+  behaelter = behaelter.filter(b=>b.id!==id);
+  save();
+  renderBehaelter();
+  updateMetrics();
+}
 async function loescheInSupabase(id){try{await supabaseClient.from('leerungen').delete().eq('id',id)}catch(e){}}
 function getExportData(){const mo=document.getElementById('exp-monat').value;return mo?leerungen.filter(l=>l.datum.startsWith(mo)):leerungen;}
 function updateVorschau(){
