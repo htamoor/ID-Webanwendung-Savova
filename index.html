@@ -98,7 +98,6 @@ tr.storniert-row td{color:var(--color-text-tertiary) !important;opacity:0.5;text
         <label>Behälter-ID <span style="color:#A32D2D">*</span></label>
         <input type="text" id="inp-behaelter" placeholder="Warte auf RFID-Scan..." autofocus>
       </div>
-      <!-- NEU nach DIN 14803: Ereigniscode-Dropdown -->
       <div class="form-group">
         <label>Besonderheiten / Ereignis (nach DIN 14803)</label>
         <select id="inp-ereignis">
@@ -272,6 +271,7 @@ const supabaseClient = supabase.createClient(MY_SUPABASE_URL, MY_SUPABASE_KEY);
 let leerungen = JSON.parse(localStorage.getItem('din_leerungen') || '[]');
 let behaelter = JSON.parse(localStorage.getItem('din_behaelter') || '[]');
 let bluetoothCharacteristic;
+let focusTimeout;
 
 function save() {
   try {
@@ -282,6 +282,23 @@ function save() {
   }
 }
 
+// === PRAXIS-FIX 1: DAUER-FOKUS FÜR ANDROID-HARDWARE ===
+function aktiviereAutoFokus() {
+  const idInput = document.getElementById('inp-behaelter');
+  if (!idInput) return;
+
+  idInput.addEventListener('blur', () => {
+    clearTimeout(focusTimeout);
+    focusTimeout = setTimeout(() => {
+      if (document.activeElement !== document.getElementById('inp-bemerkung')) {
+        idInput.focus();
+        console.log("Fokus automatisch auf inp-behaelter zurückgesetzt.");
+      }
+    }, 2000); 
+  });
+}
+
+// === SCANNER-STEUERUNG (Erweitert für Android & flexible IDs) ===
 async function starteMuellScanner() {
   showAlert('alert-area', 'Verbinde mit Scanner...', 'warn');
   try {
@@ -308,15 +325,31 @@ async function starteMuellScanner() {
   }
 }
 
+// === PRAXIS-FIX 2: ROBUSTE ID-VALIDIERUNG ===
 function verarbeiteScan(event) {
   const value = event.target.value;
   const decoder = new TextDecoder();
   let scannerAntwort = decoder.decode(value);
   
+  console.log("ROHDATEN VOM SCANNER:", scannerAntwort);
+
+  let bereinigteID = "";
+
   if (scannerAntwort.includes("CS:")) {
-    let gefundeneID = scannerAntwort.split("CS:")[1].trim().substring(0, 16);
-    document.getElementById('inp-behaelter').value = gefundeneID;
-    erfassen();
+    bereinigteID = scannerAntwort.split("CS:")[1].trim();
+  } else if (scannerAntwort.includes("EP:")) {
+    bereinigteID = scannerAntwort.split("EP:")[1].trim();
+  } else {
+    bereinigteID = scannerAntwort.trim();
+  }
+
+  if (bereinigteID.length >= 12) { 
+    let finaleID = bereinigteID.substring(0, 16).replace(/[^a-zA-Z0-9]/g, ""); 
+    
+    console.log("Geparste valide Behälter-ID:", finaleID);
+    
+    document.getElementById('inp-behaelter').value = finaleID;
+    erfassen(); 
   }
 }
 
@@ -328,7 +361,6 @@ function resetForm() {
 
 async function speichereInSupabase(neueLeerung) {
   try {
-    // Falls das Feld status oder ereignis in deiner DB noch fehlt: Supabase fügt sie dynamisch hinzu oder du erstellst die Spalten kurz im Dashboard
     const { data, error } = await supabaseClient
       .from('leerungen') 
       .insert([
@@ -337,8 +369,8 @@ async function speichereInSupabase(neueLeerung) {
           datum: neueLeerung.datum, 
           uhrzeit: neueLeerung.uhrzeit, 
           bemerkung: neueLeerung.bemerkung,
-          ereignis: neueLeerung.ereignis, // REVISIONS-SCHRITT 1
-          status: neueLeerung.status,     // REVISIONS-SCHRITT 2
+          ereignis: neueLeerung.ereignis,
+          status: neueLeerung.status,
           anzahl: neueLeerung.status === 'Storniert' ? 0 : 1 
         }
       ])
@@ -386,11 +418,11 @@ async function erfassen() {
   const localEntry = {
     id: String(Date.now()), 
     datum: jetzt.toISOString().split('T')[0],
-    uhrzeit: Resource = jetzt.toTimeString().split(' ')[0].substring(0, 5),
+    uhrzeit: jetzt.toTimeString().split(' ')[0].substring(0, 5),
     behaelterId: bid,
     bemerkung: bemerkung,
-    ereignis: ereignis, // DIN-Ereignis sichern
-    status: 'Erfasst',   // Standardzustand
+    ereignis: ereignis, 
+    status: 'Erfasst',   
     synced: false 
   };
 
@@ -415,7 +447,6 @@ async function erfassen() {
   }
 }
 
-// === REVISIONS-SCHRITT 3: Aus Löschen wird ein Stornierungs-Update ===
 async function storniereLeerung(id){
   const eintrag = leerungen.find(l => l.id === id);
   if (!eintrag) return;
@@ -432,12 +463,11 @@ async function storniereLeerung(id){
     try {
       const { error } = await supabaseClient
         .from('leerungen')
-        .update({ status: 'Storniert', anzahl: 0 }) // Auf 0 setzen, damit Statistiken sauber bleiben
+        .update({ status: 'Storniert', anzahl: 0 }) 
         .eq('id', id); 
 
       if (error) throw error;
     } catch (e) {
-      // Falls offline storniert wird, setzen wir den Sync-Status temporär zurück
       eintrag.synced = false;
       console.log("Offline storniert. Synchronisierung folgt im Netz.");
     }
@@ -450,17 +480,15 @@ async function storniereLeerung(id){
   renderLetzt();
 }
 
-// === REVISIONS-SCHRITT 4: Statistiken zählen stornierte Zeilen nicht mit ===
 function updateMetrics(){
   const td=today();const mo=td.slice(0,7);
-  
   const valideLeerungen = leerungen.filter(l => l.status !== 'Storniert');
 
   document.getElementById('m-heute').textContent=valideLeerungen.filter(l=>l.datum===td).length;
   document.getElementById('m-monat').textContent=valideLeerungen.filter(l=>l.datum.startsWith(mo)).length;
   document.getElementById('m-behaelter').textContent=behaelter.length;
   
-  const last=leerungen[0]; // Letzter Eintrag (auch storniert) darf im Log stehen
+  const last=leerungen[0]; 
   document.getElementById('m-letzt').textContent=last?last.datum.slice(5)+' '+last.behaelterId:'–';
 }
 
@@ -506,7 +534,6 @@ function addBehaelter(){
 
 function renderBehaelter(){
   const tb=document.getElementById('tbody-behaelter');if(!behaelter.length){tb.innerHTML='<tr><td colspan="6" style="color:var(--color-text-secondary);text-align:center;padding:20px">Noch keine Behälter registriert.</td></tr>';return;}
-  // Zähle stornierte Leerungen bei den Behältern nicht mit
   tb.innerHTML=behaelter.map(b=>{
     const count=leerungen.filter(l=>l.behaelterId===b.id && l.status !== 'Storniert').length;
     return`<tr><td style="font-weight:500">${b.id}</td><td>${b.name||'–'}</td><td>${b.typ}</td><td>${b.intervall}</td><td><span class="tag tag-ok">${count}</span></td><td><button class="btn btn-sm" onclick="delBehaelter('${b.id}')"><i class="ti ti-trash"></i></button></td></tr>`;
@@ -527,7 +554,6 @@ function buildFilter(){
   const sel2=document.getElementById('f-behaelter');const cur2=sel2.value;sel2.innerHTML='<option value="">Alle Behälter</option>';behaelter.forEach(b=>{const o=document.createElement('option');o.value=b.id;o.textContent=b.id;sel2.appendChild(o)});if(cur2)sel2.value=cur2;
 }
 
-// === REVISIONS-SCHRITT 5: UI rendert stornierte Zeilen durchgestrichen ===
 function renderTabelle(){
   const mo=document.getElementById('f-monat').value;const bid=document.getElementById('f-behaelter').value;const q=(document.getElementById('f-suche').value||'').toLowerCase();
   
@@ -565,10 +591,8 @@ function renderTabelle(){
   }).join('');
 }
 
-// === REVISIONS-SCHRITT 6: Exporte filtern Storniertes sauber aus ===
 function getExportData(){
   const mo=document.getElementById('exp-monat').value;
-  // Nur aktive, nicht stornierte Daten exportieren
   const aktiveData = leerungen.filter(l => l.status !== 'Storniert');
   return mo ? aktiveData.filter(l=>l.datum.startsWith(mo)) : aktiveData;
 }
@@ -597,7 +621,9 @@ function exportPDF(){
   const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
+// Initialisierung bei App-Start
 updateMetrics();
 renderLetzt();
 synchronisiereOfflineEintraege();
+aktiviereAutoFokus();
 </script>
