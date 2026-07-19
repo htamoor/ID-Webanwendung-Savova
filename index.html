@@ -1,4 +1,3 @@
-
 <h2 class="sr-only">DIN 14803 Behälteridentifikationssystem – Leerungserfassung, Übersicht und Export</h2>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -109,6 +108,7 @@ tr:hover td{background:var(--color-background-secondary)}
   <button class="btn btn-success" onclick="starteMuellScanner()"><i class="ti ti-bluetooth" aria-hidden="true"></i> Scanner verbinden</button>
   <button class="btn" onclick="resetForm()"><i class="ti ti-refresh" aria-hidden="true"></i> Zurücksetzen</button>
 </div>
+    </div>
     <div class="card">
       <div class="section-title"><i class="ti ti-clock" style="font-size:16px" aria-hidden="true"></i> Letzte Einträge</div>
       <div id="letzte-liste" style="font-size:13px;color:var(--color-text-secondary)">Noch keine Einträge.</div>
@@ -406,7 +406,6 @@ function renderBehaelter(){
   const tb=document.getElementById('tbody-behaelter');if(!behaelter.length){tb.innerHTML='<tr><td colspan="6" style="color:var(--color-text-secondary);text-align:center;padding:20px">Noch keine Behälter registriert.</td></tr>';return;}
   tb.innerHTML=behaelter.map(b=>{const count=leerungen.filter(l=>l.behaelterId===b.id).reduce((a,c)=>a+(c.anzahl||1),0);return`<tr><td style="font-weight:500">${b.id}</td><td>${b.name||'–'}</td><td>${b.typ}</td><td>${b.intervall}</td><td><span class="tag tag-ok">${count}</span></td><td><button class="btn btn-sm" onclick="delBehaelter('${b.id}')"><i class="ti ti-trash"></i></button></td></tr>`;}).join('');
 }
-function delBehaelter(id){if(!confirm('Behälter '+id+' wirklich löschen?'))return;behaelter=behaelter.filter(b=>b.id!==id);save();renderBehaelter();updateMetrics();}
 function buildFilter(){
   const monate=[...new Set(leerungen.map(l=>l.datum.slice(0,7)))].sort().reverse();const sel=document.getElementById('f-monat');const cur=sel.value;sel.innerHTML='<option value="">Alle Monate</option>';
   monate.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o)});if(cur)sel.value=cur;
@@ -419,6 +418,18 @@ function renderTabelle(){
   const bMap={};behaelter.forEach(b=>bMap[b.id]=b);
   tb.innerHTML=data.map(l=>{const b=bMap[l.behaelterId]||{};return`<tr><td>${l.datum}</td><td style="color:var(--color-text-secondary)">${l.uhrzeit||'–'}</td><td style="font-weight:500">${l.behaelterId}</td><td style="color:var(--color-text-secondary)">${b.name||'–'}</td><td><span class="tag tag-ok">${l.anzahl||1}×</span></td><td style="color:var(--color-text-secondary);max-width:120px;overflow:hidden;text-overflow:ellipsis">${l.bemerkung||'–'}</td><td><span class="tag tag-ok">Erfasst</span></td><td><button class="btn btn-sm" onclick="delLeerung('${l.id}')"><i class="ti ti-trash"></i></button></td></tr>`;}).join('');
 }
+
+// --- HIER SIND DIE SAUBEREN LOKALEN LÖSCHFUNKTIONEN (KORRIGIERT & BEREINIGT) ---
+function delLeerung(id){
+  if(!confirm('Eintrag wirklich lokal von diesem Gerät löschen? (Bleibt in der Cloud als Archiv gesichert)')) return;
+  leerungen = leerungen.filter(l=>l.id!==id);
+  save();
+  renderTabelle();
+  buildFilter();
+  updateMetrics();
+  renderLetzt();
+}
+
 function delBehaelter(id){
   if(!confirm('Behälter '+id+' wirklich lokal von diesem Gerät löschen?')) return;
   behaelter = behaelter.filter(b=>b.id!==id);
@@ -426,7 +437,7 @@ function delBehaelter(id){
   renderBehaelter();
   updateMetrics();
 }
-async function loescheInSupabase(id){try{await supabaseClient.from('leerungen').delete().eq('id',id)}catch(e){}}
+
 function getExportData(){const mo=document.getElementById('exp-monat').value;return mo?leerungen.filter(l=>l.datum.startsWith(mo)):leerungen;}
 function updateVorschau(){
   const data=getExportData();const el=document.getElementById('vorschau-content');if(!data.length){el.innerHTML='<span>Keine Leerungen im Zeitraum.</span>';return;}
