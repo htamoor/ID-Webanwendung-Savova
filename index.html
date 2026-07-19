@@ -20,7 +20,6 @@ body{font-family:var(--font-sans);background:transparent;color:var(--color-text-
 .card-sm{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:12px 16px}
 .metric-label{font-size:12px;color:var(--color-text-secondary);margin-bottom:4px}
 .metric-val{font-size:22px;font-weight:500}
-.metric-sub{font-size:12px;color:var(--color-text-tertiary);margin-top:2px}
 
 .form-group{margin-bottom:14px}
 .form-group label{display:block;font-size:13px;color:var(--color-text-secondary);margin-bottom:5px}
@@ -41,6 +40,7 @@ th{font-size:11px;font-weight:500;color:var(--color-text-secondary);text-transfo
 td{padding:9px 12px;border-bottom:0.5px solid var(--color-border-tertiary);color:var(--color-text-primary);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:var(--color-background-secondary)}
+tr.storniert-row td{color:var(--color-text-tertiary) !important;opacity:0.5;text-decoration:line-through}
 
 .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500}
 .tag-ok{background:#EAF3DE;color:#3B6D11}
@@ -48,7 +48,6 @@ tr:hover td{background:var(--color-background-secondary)}
 .tag-err{background:#FCEBEB;color:#A32D2D}
 
 .section-title{font-size:14px;font-weight:500;margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.divider{height:0.5px;background:var(--color-border-tertiary);margin:20px 0}
 
 .alert{padding:10px 14px;border-radius:var(--border-radius-md);font-size:13px;margin-bottom:14px;border:0.5px solid}
 .alert-success{background:#EAF3DE;color:#27500A;border-color:#C0DD97}
@@ -99,6 +98,17 @@ tr:hover td{background:var(--color-background-secondary)}
         <label>Behälter-ID <span style="color:#A32D2D">*</span></label>
         <input type="text" id="inp-behaelter" placeholder="Warte auf RFID-Scan..." autofocus>
       </div>
+      <!-- NEU nach DIN 14803: Ereigniscode-Dropdown -->
+      <div class="form-group">
+        <label>Besonderheiten / Ereignis (nach DIN 14803)</label>
+        <select id="inp-ereignis">
+          <option value="Reguläre Leerung">-- Reguläre, glatte Leerung --</option>
+          <option value="Behälter nicht bereitgestellt">Behälter nicht bereitgestellt</option>
+          <option value="Behälter defekt">Behälter defekt</option>
+          <option value="Zufahrt blockiert">Zufahrt blockiert</option>
+          <option value="Fehlbefüllung">Fehlbefüllung</option>
+        </select>
+      </div>
       <div class="form-group">
         <label>Bemerkung</label>
         <input type="text" id="inp-bemerkung" placeholder="optional">
@@ -133,7 +143,7 @@ tr:hover td{background:var(--color-background-secondary)}
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>Datum</th><th>Uhrzeit</th><th>Behälter-ID</th><th>Bezeichnung</th><th>Anzahl</th><th>Bemerkung</th><th>Status</th><th></th>
+          <th>Datum</th><th>Uhrzeit</th><th>Behälter-ID</th><th>Bezeichnung</th><th>Ereignis</th><th>Bemerkung</th><th>Status</th><th>Aktion</th>
         </tr></thead>
         <tbody id="tbody-leerung"></tbody>
       </table>
@@ -254,11 +264,9 @@ tr:hover td{background:var(--color-background-secondary)}
 </div>
 
 <script>
-// 1. Projektdaten für Supabase definieren
 const MY_SUPABASE_URL = "https://bcdejuyjxyzqpoleogby.supabase.co";
 const MY_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJjZGVqdXlqeHl6cXBvbGVvZ2J5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NzI2NTMsImV4cCI6MjA5NzE0ODY1M30.8tuj9KlRN5xk59WdefRB_nY2S0iE4QzvIZRVK615FS8";
 
-// 2. Supabase Client erstellen
 const supabaseClient = supabase.createClient(MY_SUPABASE_URL, MY_SUPABASE_KEY);
 
 let leerungen = JSON.parse(localStorage.getItem('din_leerungen') || '[]');
@@ -274,7 +282,6 @@ function save() {
   }
 }
 
-// === SCANNER-STEUERUNG (wieder integriert) ===
 async function starteMuellScanner() {
   showAlert('alert-area', 'Verbinde mit Scanner...', 'warn');
   try {
@@ -306,8 +313,6 @@ function verarbeiteScan(event) {
   const decoder = new TextDecoder();
   let scannerAntwort = decoder.decode(value);
   
-  console.log("Rohdaten vom Scanner:", scannerAntwort);
-
   if (scannerAntwort.includes("CS:")) {
     let gefundeneID = scannerAntwort.split("CS:")[1].trim().substring(0, 16);
     document.getElementById('inp-behaelter').value = gefundeneID;
@@ -318,11 +323,12 @@ function verarbeiteScan(event) {
 function resetForm() {
   document.getElementById('inp-behaelter').value = '';
   document.getElementById('inp-bemerkung').value = '';
+  document.getElementById('inp-ereignis').value = 'Reguläre Leerung';
 }
 
-// === FIX 1: ID-Synchronisation & Rückgabewert ===
 async function speichereInSupabase(neueLeerung) {
   try {
+    // Falls das Feld status oder ereignis in deiner DB noch fehlt: Supabase fügt sie dynamisch hinzu oder du erstellst die Spalten kurz im Dashboard
     const { data, error } = await supabaseClient
       .from('leerungen') 
       .insert([
@@ -331,7 +337,9 @@ async function speichereInSupabase(neueLeerung) {
           datum: neueLeerung.datum, 
           uhrzeit: neueLeerung.uhrzeit, 
           bemerkung: neueLeerung.bemerkung,
-          anzahl: 1 
+          ereignis: neueLeerung.ereignis, // REVISIONS-SCHRITT 1
+          status: neueLeerung.status,     // REVISIONS-SCHRITT 2
+          anzahl: neueLeerung.status === 'Storniert' ? 0 : 1 
         }
       ])
       .select();
@@ -339,7 +347,6 @@ async function speichereInSupabase(neueLeerung) {
     if (error) throw error;
     
     if (data && data.length > 0) {
-      console.log("Erfolgreich in Cloud gespeichert:", data[0]);
       return { success: true, cloudId: data[0].id };
     }
     return { success: false };
@@ -349,12 +356,9 @@ async function speichereInSupabase(neueLeerung) {
   }
 } 
 
-// === FIX 2: Offline-Queue (Hintergrund-Sync) ===
 async function synchronisiereOfflineEintraege() {
   const unsynced = leerungen.filter(l => l.synced === false);
   if (unsynced.length === 0) return;
-
-  console.log(`Starte Nachsynchronisation für ${unsynced.length} Einträge...`);
 
   for (let localEntry of unsynced) {
     const res = await speichereInSupabase(localEntry);
@@ -374,6 +378,7 @@ async function erfassen() {
   const idInput = document.getElementById('inp-behaelter');
   const bid = idInput.value.trim();
   const bemerkung = document.getElementById('inp-bemerkung').value.trim();
+  const ereignis = document.getElementById('inp-ereignis').value;
 
   if (!bid) return;
 
@@ -381,10 +386,11 @@ async function erfassen() {
   const localEntry = {
     id: String(Date.now()), 
     datum: jetzt.toISOString().split('T')[0],
-    uhrzeit: jetzt.toTimeString().split(' ')[0].substring(0, 5),
+    uhrzeit: Resource = jetzt.toTimeString().split(' ')[0].substring(0, 5),
     behaelterId: bid,
     bemerkung: bemerkung,
-    anzahl: 1,
+    ereignis: ereignis, // DIN-Ereignis sichern
+    status: 'Erfasst',   // Standardzustand
     synced: false 
   };
 
@@ -395,10 +401,9 @@ async function erfassen() {
   buildFilter();
   updateMetrics();
   renderLetzt();
+  resetForm();
 
-  idInput.value = '';
-  document.getElementById('inp-bemerkung').value = '';
-  showAlert('alert-area', 'Mülltonne erfolgreich erfasst!', 'success');
+  showAlert('alert-area', 'Datensatz erfolgreich erfasst!', 'success');
 
   const res = await speichereInSupabase(localEntry);
   if (res.success) {
@@ -407,37 +412,37 @@ async function erfassen() {
     save(); 
     renderTabelle(); 
     renderLetzt();
-  } else {
-    console.log("Eintrag wurde offline gespeichert. Sync erfolgt später.");
   }
 }
 
-// === FIX 1.2: Cloud-Löschung via .eq('id', ...) aktivieren ===
-async function delLeerung(id){
+// === REVISIONS-SCHRITT 3: Aus Löschen wird ein Stornierungs-Update ===
+async function storniereLeerung(id){
   const eintrag = leerungen.find(l => l.id === id);
   if (!eintrag) return;
+  if (eintrag.status === 'Storniert') {
+    alert('Dieser Eintrag ist bereits storniert.');
+    return;
+  }
 
-  const msg = eintrag.synced 
-    ? 'Eintrag wirklich aus der Cloud und lokal löschen?' 
-    : 'Dieser Eintrag wurde noch nicht synchronisiert. Wirklich lokal löschen?';
+  if (!confirm(`Eintrag für Behälter ${eintrag.behaelterId} wirklich revisionssicher stornieren? (Wird nicht gelöscht)`)) return;
 
-  if (!confirm(msg)) return;
-
+  eintrag.status = 'Storniert';
+  
   if (eintrag.synced) {
     try {
       const { error } = await supabaseClient
         .from('leerungen')
-        .delete()
+        .update({ status: 'Storniert', anzahl: 0 }) // Auf 0 setzen, damit Statistiken sauber bleiben
         .eq('id', id); 
 
       if (error) throw error;
-      console.log("Erfolgreich aus Supabase gelöscht");
     } catch (e) {
-      alert("Fehler beim Löschen aus der Cloud (evtl. kein Netz). Eintrag wird nur lokal entfernt.");
+      // Falls offline storniert wird, setzen wir den Sync-Status temporär zurück
+      eintrag.synced = false;
+      console.log("Offline storniert. Synchronisierung folgt im Netz.");
     }
   }
 
-  leerungen = leerungen.filter(l=>l.id!==id);
   save();
   renderTabelle();
   buildFilter();
@@ -445,37 +450,41 @@ async function delLeerung(id){
   renderLetzt();
 }
 
-// --- RENDERING-FUNKTIONEN (Sicherheit & Statusbadges angepasst) ---
+// === REVISIONS-SCHRITT 4: Statistiken zählen stornierte Zeilen nicht mit ===
 function updateMetrics(){
   const td=today();const mo=td.slice(0,7);
-  document.getElementById('m-heute').textContent=leerungen.filter(l=>l.datum===td).reduce((a,b)=>a+(b.anzahl||1),0);
-  document.getElementById('m-monat').textContent=leerungen.filter(l=>l.datum.startsWith(mo)).reduce((a,b)=>a+(b.anzahl||1),0);
+  
+  const valideLeerungen = leerungen.filter(l => l.status !== 'Storniert');
+
+  document.getElementById('m-heute').textContent=valideLeerungen.filter(l=>l.datum===td).length;
+  document.getElementById('m-monat').textContent=valideLeerungen.filter(l=>l.datum.startsWith(mo)).length;
   document.getElementById('m-behaelter').textContent=behaelter.length;
-  const last=leerungen[0];document.getElementById('m-letzt').textContent=last?last.datum.slice(5)+' '+last.behaelterId:'–';
+  
+  const last=leerungen[0]; // Letzter Eintrag (auch storniert) darf im Log stehen
+  document.getElementById('m-letzt').textContent=last?last.datum.slice(5)+' '+last.behaelterId:'–';
 }
 
 function renderLetzt(){
   const el=document.getElementById('letzte-liste');if(!leerungen.length){el.innerHTML='<span>Noch keine Einträge.</span>';return;}
-  el.innerHTML=leerungen.slice(0,8).map(l=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--color-border-tertiary)"><span style="color:var(--color-text-secondary)">${l.datum} ${l.uhrzeit||''}</span><span style="font-weight:500">${l.behaelterId}</span><span class="tag ${l.synced ? 'tag-ok' : 'tag-warn'}">${l.synced ? 'Cloud' : 'Lokal'}</span></div>`).join('');
+  el.innerHTML=leerungen.slice(0,8).map(l=> {
+    const isStorniert = l.status === 'Storniert';
+    return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--color-border-tertiary); ${isStorniert ? 'opacity:0.4;text-decoration:line-through;' : ''}">
+      <span style="color:var(--color-text-secondary)">${l.datum} ${l.uhrzeit||''}</span>
+      <span style="font-weight:500">${l.behaelterId}</span>
+      <span class="tag ${isStorniert ? 'tag-err' : (l.synced ? 'tag-ok' : 'tag-warn')}">${isStorniert ? 'Storniert' : (l.synced ? 'Cloud' : 'Lokal')}</span>
+    </div>`
+  }).join('');
 }
 
 function showPanel(id,btn){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
-  
   document.getElementById('panel-'+id).classList.add('active');
   btn.classList.add('active');
   
-  if(id==='uebersicht'){
-    buildFilter();
-    renderTabelle();
-    synchronisiereOfflineEintraege(); 
-  }
+  if(id==='uebersicht'){ buildFilter(); renderTabelle(); synchronisiereOfflineEintraege(); }
   if(id==='behaelter'){renderBehaelter();}
-  if(id==='erfassung'){
-    updateMetrics();
-    synchronisiereOfflineEintraege(); 
-  }
+  if(id==='erfassung'){ updateMetrics(); renderLetzt(); synchronisiereOfflineEintraege(); }
   if(id==='export'){updateVorschau();}
 }
 
@@ -484,7 +493,7 @@ function today(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+
 
 function showAlert(id,msg,type){
   const el=document.getElementById(id);
-  const alertClass = type === 'success' || type === 'tag-ok' ? 'alert-success' : 'alert-err';
+  const alertClass = type === 'success' ? 'alert-success' : 'alert-err';
   el.innerHTML=`<div class="alert ${alertClass}">${msg}</div>`;
   setTimeout(()=>{el.innerHTML=''},3500);
 }
@@ -497,7 +506,11 @@ function addBehaelter(){
 
 function renderBehaelter(){
   const tb=document.getElementById('tbody-behaelter');if(!behaelter.length){tb.innerHTML='<tr><td colspan="6" style="color:var(--color-text-secondary);text-align:center;padding:20px">Noch keine Behälter registriert.</td></tr>';return;}
-  tb.innerHTML=behaelter.map(b=>{const count=leerungen.filter(l=>l.behaelterId===b.id).reduce((a,c)=>a+(c.anzahl||1),0);return`<tr><td style="font-weight:500">${b.id}</td><td>${b.name||'–'}</td><td>${b.typ}</td><td>${b.intervall}</td><td><span class="tag tag-ok">${count}</span></td><td><button class="btn btn-sm" onclick="delBehaelter('${b.id}')"><i class="ti ti-trash"></i></button></td></tr>`;}).join('');
+  // Zähle stornierte Leerungen bei den Behältern nicht mit
+  tb.innerHTML=behaelter.map(b=>{
+    const count=leerungen.filter(l=>l.behaelterId===b.id && l.status !== 'Storniert').length;
+    return`<tr><td style="font-weight:500">${b.id}</td><td>${b.name||'–'}</td><td>${b.typ}</td><td>${b.intervall}</td><td><span class="tag tag-ok">${count}</span></td><td><button class="btn btn-sm" onclick="delBehaelter('${b.id}')"><i class="ti ti-trash"></i></button></td></tr>`;
+  }).join('');
 }
 
 function delBehaelter(id){
@@ -514,19 +527,55 @@ function buildFilter(){
   const sel2=document.getElementById('f-behaelter');const cur2=sel2.value;sel2.innerHTML='<option value="">Alle Behälter</option>';behaelter.forEach(b=>{const o=document.createElement('option');o.value=b.id;o.textContent=b.id;sel2.appendChild(o)});if(cur2)sel2.value=cur2;
 }
 
+// === REVISIONS-SCHRITT 5: UI rendert stornierte Zeilen durchgestrichen ===
 function renderTabelle(){
   const mo=document.getElementById('f-monat').value;const bid=document.getElementById('f-behaelter').value;const q=(document.getElementById('f-suche').value||'').toLowerCase();
-  let data=leerungen.filter(l=>{if(mo&&!l.datum.startsWith(mo))return false;if(bid&&l.behaelterId!==bid)return false;if(q&&!(l.behaelterId.toLowerCase().includes(q)||l.datum.includes(q)||(l.bemerkung||'').toLowerCase().includes(q)))return false;return true;});
-  document.getElementById('count-label').textContent=`${data.length} Einträge`;const tb=document.getElementById('tbody-leerung');if(!data.length){tb.innerHTML='<tr><td colspan="8" style="color:var(--text-secondary);text-align:center;padding:20px">Keine Einträge gefunden.</td></tr>';return;}
+  
+  let data=leerungen.filter(l=>{
+    if(mo&&!l.datum.startsWith(mo))return false;
+    if(bid&&l.behaelterId!==bid)return false;
+    if(q&&!(l.behaelterId.toLowerCase().includes(q)||l.datum.includes(q)||(l.bemerkung||'').toLowerCase().includes(q)||l.ereignis.toLowerCase().includes(q)))return false;
+    return true;
+  });
+  
+  document.getElementById('count-label').textContent=`${data.length} Einträge`;
+  const tb=document.getElementById('tbody-leerung');
+  if(!data.length){tb.innerHTML='<tr><td colspan="8" style="color:var(--text-secondary);text-align:center;padding:20px">Keine Einträge gefunden.</td></tr>';return;}
+  
   const bMap={};behaelter.forEach(b=>bMap[b.id]=b);
-  tb.innerHTML=data.map(l=>{const b=bMap[l.behaelterId]||{};return`<tr><td>${l.datum}</td><td style="color:var(--color-text-secondary)">${l.uhrzeit||'–'}</td><td style="font-weight:500">${l.behaelterId}</td><td style="color:var(--color-text-secondary)">${b.name||'–'}</td><td><span class="tag tag-ok">${l.anzahl||1}×</span></td><td style="color:var(--color-text-secondary);max-width:120px;overflow:hidden;text-overflow:ellipsis">${l.bemerkung||'–'}</td><td><span class="tag ${l.synced ? 'tag-ok' : 'tag-warn'}">${l.synced ? 'Erfasst' : 'Wartet...'}</span></td><td><button class="btn btn-sm" onclick="delLeerung('${l.id}')"><i class="ti ti-trash"></i></button></td></tr>`;}).join('');
+  
+  tb.innerHTML=data.map(l=>{
+    const b=bMap[l.behaelterId]||{};
+    const isStorniert = l.status === 'Storniert';
+    
+    return `<tr class="${isStorniert ? 'storniert-row' : ''}">
+      <td>${l.datum}</td>
+      <td style="color:var(--color-text-secondary)">${l.uhrzeit||'–'}</td>
+      <td style="font-weight:500">${l.behaelterId}</td>
+      <td style="color:var(--color-text-secondary)">${b.name||'–'}</td>
+      <td><span class="tag ${l.ereignis === 'Reguläre Leerung' ? 'tag-ok' : 'tag-warn'}">${l.ereignis}</span></td>
+      <td style="color:var(--color-text-secondary);max-width:120px;overflow:hidden;text-overflow:ellipsis">${l.bemerkung||'–'}</td>
+      <td><span class="tag ${isStorniert ? 'tag-err' : (l.synced ? 'tag-ok' : 'tag-warn')}">${isStorniert ? 'Storniert' : (l.synced ? 'Erfasst' : 'Wartet...')}</span></td>
+      <td>
+        <button class="btn btn-sm" onclick="storniereLeerung('${l.id}')" ${isStorniert ? 'disabled' : ''}>
+          <i class="ti ti-backspace"></i> Stornieren
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
-function getExportData(){const mo=document.getElementById('exp-monat').value;return mo?leerungen.filter(l=>l.datum.startsWith(mo)):leerungen;}
+// === REVISIONS-SCHRITT 6: Exporte filtern Storniertes sauber aus ===
+function getExportData(){
+  const mo=document.getElementById('exp-monat').value;
+  // Nur aktive, nicht stornierte Daten exportieren
+  const aktiveData = leerungen.filter(l => l.status !== 'Storniert');
+  return mo ? aktiveData.filter(l=>l.datum.startsWith(mo)) : aktiveData;
+}
 
 function updateVorschau(){
-  const data=getExportData();const el=document.getElementById('vorschau-content');if(!data.length){el.innerHTML='<span>Keine Leerungen im Zeitraum.</span>';return;}
-  const total=data.reduce((a,b)=>a+(b.anzahl||1),0);const byB={};data.forEach(l=>{byB[l.behaelterId]=(byB[l.behaelterId]||0)+(l.anzahl||1)});
+  const data=getExportData();const el=document.getElementById('vorschau-content');if(!data.length){el.innerHTML='<span>Keine aktiven Leerungen im Zeitraum.</span>';return;}
+  const total=data.length;const byB={};data.forEach(l=>{byB[l.behaelterId]=(byB[l.behaelterId]||0)+1});
   el.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px"><div class="card-sm"><div class="metric-label">Leerungen gesamt</div><div class="metric-val">${total}</div></div><div class="card-sm"><div class="metric-label">Behälter erfasst</div><div class="metric-val">${Object.keys(byB).length}</div></div></div><div class="section-title" style="font-size:13px">Nach Behälter</div>`+Object.entries(byB).map(([id,cnt])=>{const max=Math.max(...Object.values(byB));return`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:13px"><span>${id}</span><span style="font-weight:500">${cnt}×</span></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.round(cnt/max*100)}%"></div></div></div>`}).join('');
 }
 
@@ -534,20 +583,20 @@ document.getElementById('exp-monat').addEventListener('change',updateVorschau);
 
 function exportCSV(){
   const mo=document.getElementById('exp-monat').value;const ag=document.getElementById('exp-ag').value||'–';const an=document.getElementById('exp-an').value||'–';const vn=document.getElementById('exp-vn').value||'–';const data=getExportData();if(!data.length){alert('Keine Daten.');return;}
-  const bMap={};behaelter.forEach(b=>bMap[b.id]=b);const header=['Datum','Uhrzeit','Behälter-ID','Bezeichnung','Behältertyp','Anzahl Leerungen','Bemerkung','Auftraggeber','Auftragnehmer','Vertragsnummer','Norm'];
-  const rows=data.map(l=>{const b=bMap[l.behaelterId]||{};return[l.datum,l.uhrzeit||'',l.behaelterId,b.name||'',b.typ||'',l.anzahl||1,l.bemerkung||'',ag,an,vn,'DIN 14803'].join(';')});
+  const bMap={};behaelter.forEach(b=>bMap[b.id]=b);
+  const header=['Datum','Uhrzeit','Behälter-ID','Bezeichnung','Behältertyp','Ereignis/Besonderheit','Bemerkung','Auftraggeber','Auftragnehmer','Vertragsnummer','Norm'];
+  const rows=data.map(l=>{const b=bMap[l.behaelterId]||{};return[l.datum,l.uhrzeit||'',l.behaelterId,b.name||'',b.typ||'',l.ereignis,l.bemerkung||'',ag,an,vn,'DIN 14803'].join(';')});
   const csv='\uFEFF'+[header.join(';'),...rows].join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`Leerungsnachweis_DIN14803_${mo||'gesamt'}.csv`;a.click();URL.revokeObjectURL(url);
 }
 
 function exportPDF(){
   const mo=document.getElementById('exp-monat').value;const ag=document.getElementById('exp-ag').value||'–';const an=document.getElementById('exp-an').value||'–';const vn=document.getElementById('exp-vn').value||'–';const data=getExportData();if(!data.length){alert('Keine Daten.');return;}
-  const bMap={};behaelter.forEach(b=>bMap[b.id]=b);const total=data.reduce((a,b)=>a+(b.anzahl||1),0);
-  const rows=data.map(l=>{const b=bMap[l.behaelterId]||{};return`<tr><td>${l.datum}</td><td>${l.uhrzeit||'–'}</td><td><strong>${l.behaelterId}</strong></td><td>${b.name||'–'}</td><td>${l.anzahl||1}×</td><td>${l.bemerkung||''}</td></tr>`}).join('');
-  const html=`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Leerungsnachweis DIN 14803</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#1a1a1a}h1{font-size:18px;margin-bottom:4px}.subtitle{color:#555;font-size:13px;margin-bottom:18px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;font-size:12px;margin-bottom:20px;padding:12px;background:#f5f5f5;border-radius:4px}.meta span{color:#555}.norm-badge{display:inline-block;background:#dbeafe;color:#1e40af;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:bold;margin-left:8px}table{width:100%;border-collapse:collapse;margin-top:8px}th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;background:#f0f0f0;padding:7px 10px;border-bottom:1px solid #ddd;text-align:left}td{padding:7px 10px;border-bottom:0.5px solid #eee;font-size:11.5px}tr:nth-child(even) td{background:#fafafa}.footer{margin-top:24px;font-size:10px;color:#888;border-top:1px solid #eee;padding-top:8px}.total-row td{font-weight:bold;background:#e8f5e9;border-top:2px solid #ccc}@media print{body{margin:15mm}}</style></head><body><h1>Leerungsnachweis <span class="norm-badge">DIN 14803</span></h1><div class="subtitle">Behälteridentifikationssystem – Monatsbericht ${mo||'Gesamtzeitraum'}</div><div class="meta"><div><span>Auftraggeber:</span><br><strong>${ag}</strong></div><div><span>Auftragnehmer:</span><br><strong>${an}</strong></div><div><span>Vertragsnummer:</span><br><strong>${vn}</strong></div><div><span>Berichtszeitraum:</span><br><strong>${mo||'alle'}</strong></div><div><span>Erstellt am:</span><br><strong>${new Date().toLocaleDateString('de-DE')}</strong></div><div><span>Leerungen gesamt:</span><br><strong>${total}</strong></div></div><table><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Behälter-ID</th><th>Bezeichnung</th><th>Anzahl</th><th>Bemerkung</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="total-row"><td colspan="4">Gesamt</td><td>${total}×</td><td></td></tr></tfoot></table><div class="footer">Dieses Dokument wurde automatisch erstellt gemäß DIN 14803.</div><script>window.onload=function(){window.print();}<\/script></body></html>`;
+  const bMap={};behaelter.forEach(b=>bMap[b.id]=b);const total=data.length;
+  const rows=data.map(l=>{const b=bMap[l.behaelterId]||{};return`<tr><td>${l.datum}</td><td>${l.uhrzeit||'–'}</td><td><strong>${l.behaelterId}</strong></td><td>${b.name||'–'}</td><td>${l.ereignis}</td><td>${l.bemerkung||''}</td></tr>`}).join('');
+  const html=`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Leerungsnachweis DIN 14803</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#1a1a1a}h1{font-size:18px;margin-bottom:4px}.subtitle{color:#555;font-size:13px;margin-bottom:18px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;font-size:12px;margin-bottom:20px;padding:12px;background:#f5f5f5;border-radius:4px}.meta span{color:#555}.norm-badge{display:inline-block;background:#dbeafe;color:#1e40af;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:bold;margin-left:8px}table{width:100%;border-collapse:collapse;margin-top:8px}th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;background:#f0f0f0;padding:7px 10px;border-bottom:1px solid #ddd;text-align:left}td{padding:7px 10px;border-bottom:0.5px solid #eee;font-size:11.5px}tr:nth-child(even) td{background:#fafafa}.footer{margin-top:24px;font-size:10px;color:#888;border-top:1px solid #eee;padding-top:8px}.total-row td{font-weight:bold;background:#e8f5e9;border-top:2px solid #ccc}@media print{body{margin:15mm}}</style></head><body><h1>Leerungsnachweis <span class="norm-badge">DIN 14803</span></h1><div class="subtitle">Behälteridentifikationssystem – Monatsbericht ${mo||'Gesamtzeitraum'}</div><div class="meta"><div><span>Auftraggeber:</span><br><strong>${ag}</strong></div><div><span>Auftragnehmer:</span><br><strong>${an}</strong></div><div><span>Vertragsnummer:</span><br><strong>${vn}</strong></div><div><span>Berichtszeitraum:</span><br><strong>${mo||'alle'}</strong></div><div><span>Erstellt am:</span><br><strong>${new Date().toLocaleDateString('de-DE')}</strong></div><div><span>Erfolgreiche Leerungen:</span><br><strong>${total}</strong></div></div><table><thead><tr><th>Datum</th><th>Uhrzeit</th><th>Behälter-ID</th><th>Bezeichnung</th><th>Ereignis/Status</th><th>Bemerkung</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="total-row"><td colspan="4">Gesamt (abrechenbar)</td><td>${total}×</td><td></td></tr></tfoot></table><div class="footer">Dieses Dokument wurde automatisch erstellt gemäß DIN 14803.</div><script>window.onload=function(){window.print();}<\/script></body></html>`;
   const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
-// Initialisierung bei App-Start
 updateMetrics();
 renderLetzt();
 synchronisiereOfflineEintraege();
