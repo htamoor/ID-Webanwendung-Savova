@@ -457,9 +457,12 @@ async function storniereLeerung(id){
 
   if (!confirm(`Eintrag für Behälter ${eintrag.behaelterId} wirklich revisionssicher stornieren? (Wird nicht gelöscht)`)) return;
 
+  // 1. Status lokal sofort auf Storniert setzen
   eintrag.status = 'Storniert';
   
+  // 2. Logik für die Cloud-Synchronisation
   if (eintrag.synced) {
+    // Wenn der Eintrag schon in der Cloud ist, aktualisieren wir ihn dort direkt
     try {
       const { error } = await supabaseClient
         .from('leerungen')
@@ -468,11 +471,19 @@ async function storniereLeerung(id){
 
       if (error) throw error;
     } catch (e) {
+      // Falls das Netzwerk genau jetzt weg ist, markieren wir ihn als unsynchronisiert.
+      // Der Hintergrund-Sync kümmert sich drum, sobald wieder Netz da ist.
       eintrag.synced = false;
-      console.log("Offline storniert. Synchronisierung folgt im Netz.");
+      console.log("Fehler beim Cloud-Update. Wird später synchronisiert.");
     }
+  } else {
+    // WICHTIGER FIX: Wenn der Eintrag noch lokal ist (weil er im Funkloch erfasst wurde),
+    // bleibt synced = false. Beim nächsten automatischen Sync-Lauf liest die Funktion
+    // `speichereInSupabase()` den Datensatz aus und lädt ihn direkt als "Storniert" hoch!
+    console.log("Eintrag war noch nicht in der Cloud. Wird beim nächsten Sync direkt als storniert hochgeladen.");
   }
 
+  // 3. UI updaten und lokal speichern
   save();
   renderTabelle();
   buildFilter();
