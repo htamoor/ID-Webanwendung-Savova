@@ -104,10 +104,10 @@ tr:hover td{background:var(--color-background-secondary)}
         <input type="text" id="inp-bemerkung" placeholder="optional">
       </div>
       <div class="btn-row">
-  <button class="btn btn-primary" onclick="erfassen()"><i class="ti ti-check" aria-hidden="true"></i> Leerung speichern</button>
-  <button class="btn btn-success" onclick="starteMuellScanner()"><i class="ti ti-bluetooth" aria-hidden="true"></i> Scanner verbinden</button>
-  <button class="btn" onclick="resetForm()"><i class="ti ti-refresh" aria-hidden="true"></i> Zurücksetzen</button>
-</div>
+        <button class="btn btn-primary" onclick="erfassen()"><i class="ti ti-check" aria-hidden="true"></i> Leerung speichern</button>
+        <button class="btn btn-success" onclick="starteMuellScanner()"><i class="ti ti-bluetooth" aria-hidden="true"></i> Scanner verbinden</button>
+        <button class="btn" onclick="resetForm()"><i class="ti ti-refresh" aria-hidden="true"></i> Zurücksetzen</button>
+      </div>
     </div>
     <div class="card">
       <div class="section-title"><i class="ti ti-clock" style="font-size:16px" aria-hidden="true"></i> Letzte Einträge</div>
@@ -254,7 +254,7 @@ tr:hover td{background:var(--color-background-secondary)}
 </div>
 
 <script>
- // 1. Projektdaten für Supabase definieren
+// 1. Projektdaten für Supabase definieren
 const MY_SUPABASE_URL = "https://bcdejuyjxyzqpoleogby.supabase.co";
 const MY_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJjZGVqdXlqeHl6cXBvbGVvZ2J5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NzI2NTMsImV4cCI6MjA5NzE0ODY1M30.8tuj9KlRN5xk59WdefRB_nY2S0iE4QzvIZRVK615FS8";
 
@@ -263,24 +263,24 @@ const supabaseClient = supabase.createClient(MY_SUPABASE_URL, MY_SUPABASE_KEY);
 
 let leerungen = JSON.parse(localStorage.getItem('din_leerungen') || '[]');
 let behaelter = JSON.parse(localStorage.getItem('din_behaelter') || '[]');
+let bluetoothCharacteristic;
 
 function save() {
   try {
     localStorage.setItem('din_leerungen', JSON.stringify(leerungen));
     localStorage.setItem('din_behaelter', JSON.stringify(behaelter));
-  } catch (e) {}
+  } catch (e) {
+    console.error("LocalStorage Save Error:", e);
+  }
 }
 
-// === DER AUTO-RUN TRICK: SCANNER DIREKT PER BLUETOOTH ANSTEUERN ===
-let bluetoothCharacteristic;
-
+// === SCANNER-STEUERUNG (wieder integriert) ===
 async function starteMuellScanner() {
   showAlert('alert-area', 'Verbinde mit Scanner...', 'warn');
   try {
-    // 1. Nach dem TSL-Scanner im SPP-Modus suchen
     const device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: '007956' }], // Erkennt dein Gerät anhand der Seriennummer
-      optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'] // Standard SPP UUID
+      filters: [{ namePrefix: '007956' }], 
+      optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'] 
     });
 
     const server = await device.gatt.connect();
@@ -288,22 +288,19 @@ async function starteMuellScanner() {
     const characteristics = await service.getCharacteristics();
     bluetoothCharacteristic = characteristics[0];
 
-    // 2. Daten-Empfang aktivieren (Live-Zuhören)
     await bluetoothCharacteristic.startNotifications();
     bluetoothCharacteristic.addEventListener('characteristicvaluechanged', verarbeiteScan);
 
-    // 3. DER ZAUBERBEFEHL: Wir schalten die Antennen direkt aus der Website scharf!
     const encoder = new TextEncoder();
     await bluetoothCharacteristic.writeValue(encoder.encode(".al=on\r\n"));
 
-    showAlert('alert-area', 'Scanner bereit & Antennen scharf geschaltet!', 'tag-ok');
+    showAlert('alert-area', 'Scanner bereit & Antennen scharf geschaltet!', 'success');
   } catch (error) {
     console.error("Bluetooth Fehler:", error);
     showAlert('alert-area', 'Verbindungsfehler: ' + error.message, 'err');
   }
 }
 
-// Funktion, die anspringt, sobald der Scanner im SPP-Modus Daten schickt
 function verarbeiteScan(event) {
   const value = event.target.value;
   const decoder = new TextDecoder();
@@ -311,19 +308,19 @@ function verarbeiteScan(event) {
   
   console.log("Rohdaten vom Scanner:", scannerAntwort);
 
-  // Wir suchen nach der ID in der Antwort (TSL sendet IDs oft nach "CS:" oder "EP:")
   if (scannerAntwort.includes("CS:")) {
     let gefundeneID = scannerAntwort.split("CS:")[1].trim().substring(0, 16);
-    
-    // ID in das Eingabefeld eintragen
     document.getElementById('inp-behaelter').value = gefundeneID;
-    
-    // Sofort automatisch speichern und hochladen!
     erfassen();
   }
 }
 
-// Funktion: Daten an die Supabase Cloud senden
+function resetForm() {
+  document.getElementById('inp-behaelter').value = '';
+  document.getElementById('inp-bemerkung').value = '';
+}
+
+// === FIX 1: ID-Synchronisation & Rückgabewert ===
 async function speichereInSupabase(neueLeerung) {
   try {
     const { data, error } = await supabaseClient
@@ -336,14 +333,42 @@ async function speichereInSupabase(neueLeerung) {
           bemerkung: neueLeerung.bemerkung,
           anzahl: 1 
         }
-      ]);
+      ])
+      .select();
 
     if (error) throw error;
-    console.log("Erfolgreich in Cloud gespeichert:", data);
+    
+    if (data && data.length > 0) {
+      console.log("Erfolgreich in Cloud gespeichert:", data[0]);
+      return { success: true, cloudId: data[0].id };
+    }
+    return { success: false };
   } catch (error) {
     console.error("Supabase-Fehler beim Speichern:", error.message);
+    return { success: false };
   }
-}  
+} 
+
+// === FIX 2: Offline-Queue (Hintergrund-Sync) ===
+async function synchronisiereOfflineEintraege() {
+  const unsynced = leerungen.filter(l => l.synced === false);
+  if (unsynced.length === 0) return;
+
+  console.log(`Starte Nachsynchronisation für ${unsynced.length} Einträge...`);
+
+  for (let localEntry of unsynced) {
+    const res = await speichereInSupabase(localEntry);
+    if (res.success) {
+      localEntry.id = String(res.cloudId);
+      localEntry.synced = true;
+    }
+  }
+  
+  save();
+  renderTabelle();
+  updateMetrics();
+  renderLetzt();
+}
 
 async function erfassen() {
   const idInput = document.getElementById('inp-behaelter');
@@ -359,7 +384,8 @@ async function erfassen() {
     uhrzeit: jetzt.toTimeString().split(' ')[0].substring(0, 5),
     behaelterId: bid,
     bemerkung: bemerkung,
-    anzahl: 1
+    anzahl: 1,
+    synced: false 
   };
 
   leerungen.unshift(localEntry); 
@@ -372,12 +398,54 @@ async function erfassen() {
 
   idInput.value = '';
   document.getElementById('inp-bemerkung').value = '';
+  showAlert('alert-area', 'Mülltonne erfolgreich erfasst!', 'success');
 
-  showAlert('alert-area', 'Mülltonne erfolgreich erfasst!', 'tag-ok');
-  await speichereInSupabase(localEntry);
+  const res = await speichereInSupabase(localEntry);
+  if (res.success) {
+    localEntry.id = String(res.cloudId);
+    localEntry.synced = true;
+    save(); 
+    renderTabelle(); 
+    renderLetzt();
+  } else {
+    console.log("Eintrag wurde offline gespeichert. Sync erfolgt später.");
+  }
 }
 
-// --- AB HIER DEINE BESTEHENDEN RENDERING-FUNKTIONEN (UNVERÄNDERT) ---
+// === FIX 1.2: Cloud-Löschung via .eq('id', ...) aktivieren ===
+async function delLeerung(id){
+  const eintrag = leerungen.find(l => l.id === id);
+  if (!eintrag) return;
+
+  const msg = eintrag.synced 
+    ? 'Eintrag wirklich aus der Cloud und lokal löschen?' 
+    : 'Dieser Eintrag wurde noch nicht synchronisiert. Wirklich lokal löschen?';
+
+  if (!confirm(msg)) return;
+
+  if (eintrag.synced) {
+    try {
+      const { error } = await supabaseClient
+        .from('leerungen')
+        .delete()
+        .eq('id', id); 
+
+      if (error) throw error;
+      console.log("Erfolgreich aus Supabase gelöscht");
+    } catch (e) {
+      alert("Fehler beim Löschen aus der Cloud (evtl. kein Netz). Eintrag wird nur lokal entfernt.");
+    }
+  }
+
+  leerungen = leerungen.filter(l=>l.id!==id);
+  save();
+  renderTabelle();
+  buildFilter();
+  updateMetrics();
+  renderLetzt();
+}
+
+// --- RENDERING-FUNKTIONEN (Sicherheit & Statusbadges angepasst) ---
 function updateMetrics(){
   const td=today();const mo=td.slice(0,7);
   document.getElementById('m-heute').textContent=leerungen.filter(l=>l.datum===td).reduce((a,b)=>a+(b.anzahl||1),0);
@@ -385,49 +453,51 @@ function updateMetrics(){
   document.getElementById('m-behaelter').textContent=behaelter.length;
   const last=leerungen[0];document.getElementById('m-letzt').textContent=last?last.datum.slice(5)+' '+last.behaelterId:'–';
 }
+
 function renderLetzt(){
   const el=document.getElementById('letzte-liste');if(!leerungen.length){el.innerHTML='<span>Noch keine Einträge.</span>';return;}
-  el.innerHTML=leerungen.slice(0,8).map(l=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--color-border-tertiary)"><span style="color:var(--color-text-secondary)">${l.datum} ${l.uhrzeit||''}</span><span style="font-weight:500">${l.behaelterId}</span><span class="tag tag-ok">${l.anzahl||1}×</span></div>`).join('');
+  el.innerHTML=leerungen.slice(0,8).map(l=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--color-border-tertiary)"><span style="color:var(--color-text-secondary)">${l.datum} ${l.uhrzeit||''}</span><span style="font-weight:500">${l.behaelterId}</span><span class="tag ${l.synced ? 'tag-ok' : 'tag-warn'}">${l.synced ? 'Cloud' : 'Lokal'}</span></div>`).join('');
 }
+
 function showPanel(id,btn){
-  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
-  document.getElementById('panel-'+id).classList.add('active');btn.classList.add('active');
-  if(id==='uebersicht'){buildFilter();renderTabelle();}if(id==='behaelter'){renderBehaelter();}if(id==='erfassung'){updateMetrics();}if(id==='export'){updateVorschau();}
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+  
+  document.getElementById('panel-'+id).classList.add('active');
+  btn.classList.add('active');
+  
+  if(id==='uebersicht'){
+    buildFilter();
+    renderTabelle();
+    synchronisiereOfflineEintraege(); 
+  }
+  if(id==='behaelter'){renderBehaelter();}
+  if(id==='erfassung'){
+    updateMetrics();
+    synchronisiereOfflineEintraege(); 
+  }
+  if(id==='export'){updateVorschau();}
 }
+
 function pad(n){return String(n).padStart(2,'0')}
 function today(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
-function showAlert(id,msg,type){const el=document.getElementById(id);el.innerHTML=`<div class="alert alert-${type}">${msg}</div>`;setTimeout(()=>{el.innerHTML=''},3500);}
+
+function showAlert(id,msg,type){
+  const el=document.getElementById(id);
+  const alertClass = type === 'success' || type === 'tag-ok' ? 'alert-success' : 'alert-err';
+  el.innerHTML=`<div class="alert ${alertClass}">${msg}</div>`;
+  setTimeout(()=>{el.innerHTML=''},3500);
+}
+
 function addBehaelter(){
   const id=document.getElementById('b-id').value.trim();const name=document.getElementById('b-name').value.trim();const typ=document.getElementById('b-typ').value;const intervall=document.getElementById('b-intervall').value;
   if(!id){showAlert('alert-behaelter','Behälter-ID erforderlich.','err');return;}if(behaelter.find(b=>b.id===id)){showAlert('alert-behaelter','Diese ID existiert bereits.','err');return;}
   behaelter.push({id,name,typ,intervall});save();document.getElementById('b-id').value='';document.getElementById('b-name').value='';showAlert('alert-behaelter',`Behälter <strong>${id}</strong> wurde angelegt.`,'success');renderBehaelter();updateMetrics();
 }
+
 function renderBehaelter(){
   const tb=document.getElementById('tbody-behaelter');if(!behaelter.length){tb.innerHTML='<tr><td colspan="6" style="color:var(--color-text-secondary);text-align:center;padding:20px">Noch keine Behälter registriert.</td></tr>';return;}
   tb.innerHTML=behaelter.map(b=>{const count=leerungen.filter(l=>l.behaelterId===b.id).reduce((a,c)=>a+(c.anzahl||1),0);return`<tr><td style="font-weight:500">${b.id}</td><td>${b.name||'–'}</td><td>${b.typ}</td><td>${b.intervall}</td><td><span class="tag tag-ok">${count}</span></td><td><button class="btn btn-sm" onclick="delBehaelter('${b.id}')"><i class="ti ti-trash"></i></button></td></tr>`;}).join('');
-}
-function buildFilter(){
-  const monate=[...new Set(leerungen.map(l=>l.datum.slice(0,7)))].sort().reverse();const sel=document.getElementById('f-monat');const cur=sel.value;sel.innerHTML='<option value="">Alle Monate</option>';
-  monate.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o)});if(cur)sel.value=cur;
-  const sel2=document.getElementById('f-behaelter');const cur2=sel2.value;sel2.innerHTML='<option value="">Alle Behälter</option>';behaelter.forEach(b=>{const o=document.createElement('option');o.value=b.id;o.textContent=b.id;sel2.appendChild(o)});if(cur2)sel2.value=cur2;
-}
-function renderTabelle(){
-  const mo=document.getElementById('f-monat').value;const bid=document.getElementById('f-behaelter').value;const q=(document.getElementById('f-suche').value||'').toLowerCase();
-  let data=leerungen.filter(l=>{if(mo&&!l.datum.startsWith(mo))return false;if(bid&&l.behaelterId!==bid)return false;if(q&&!(l.behaelterId.toLowerCase().includes(q)||l.datum.includes(q)||(l.bemerkung||'').toLowerCase().includes(q)))return false;return true;});
-  document.getElementById('count-label').textContent=`${data.length} Einträge`;const tb=document.getElementById('tbody-leerung');if(!data.length){tb.innerHTML='<tr><td colspan="8" style="color:var(--text-secondary);text-align:center;padding:20px">Keine Einträge gefunden.</td></tr>';return;}
-  const bMap={};behaelter.forEach(b=>bMap[b.id]=b);
-  tb.innerHTML=data.map(l=>{const b=bMap[l.behaelterId]||{};return`<tr><td>${l.datum}</td><td style="color:var(--color-text-secondary)">${l.uhrzeit||'–'}</td><td style="font-weight:500">${l.behaelterId}</td><td style="color:var(--color-text-secondary)">${b.name||'–'}</td><td><span class="tag tag-ok">${l.anzahl||1}×</span></td><td style="color:var(--color-text-secondary);max-width:120px;overflow:hidden;text-overflow:ellipsis">${l.bemerkung||'–'}</td><td><span class="tag tag-ok">Erfasst</span></td><td><button class="btn btn-sm" onclick="delLeerung('${l.id}')"><i class="ti ti-trash"></i></button></td></tr>`;}).join('');
-}
-
-// --- HIER SIND DIE SAUBEREN LOKALEN LÖSCHFUNKTIONEN (KORRIGIERT & BEREINIGT) ---
-function delLeerung(id){
-  if(!confirm('Eintrag wirklich lokal von diesem Gerät löschen? (Bleibt in der Cloud als Archiv gesichert)')) return;
-  leerungen = leerungen.filter(l=>l.id!==id);
-  save();
-  renderTabelle();
-  buildFilter();
-  updateMetrics();
-  renderLetzt();
 }
 
 function delBehaelter(id){
@@ -438,19 +508,37 @@ function delBehaelter(id){
   updateMetrics();
 }
 
+function buildFilter(){
+  const monate=[...new Set(leerungen.map(l=>l.datum.slice(0,7)))].sort().reverse();const sel=document.getElementById('f-monat');const cur=sel.value;sel.innerHTML='<option value="">Alle Monate</option>';
+  monate.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o)});if(cur)sel.value=cur;
+  const sel2=document.getElementById('f-behaelter');const cur2=sel2.value;sel2.innerHTML='<option value="">Alle Behälter</option>';behaelter.forEach(b=>{const o=document.createElement('option');o.value=b.id;o.textContent=b.id;sel2.appendChild(o)});if(cur2)sel2.value=cur2;
+}
+
+function renderTabelle(){
+  const mo=document.getElementById('f-monat').value;const bid=document.getElementById('f-behaelter').value;const q=(document.getElementById('f-suche').value||'').toLowerCase();
+  let data=leerungen.filter(l=>{if(mo&&!l.datum.startsWith(mo))return false;if(bid&&l.behaelterId!==bid)return false;if(q&&!(l.behaelterId.toLowerCase().includes(q)||l.datum.includes(q)||(l.bemerkung||'').toLowerCase().includes(q)))return false;return true;});
+  document.getElementById('count-label').textContent=`${data.length} Einträge`;const tb=document.getElementById('tbody-leerung');if(!data.length){tb.innerHTML='<tr><td colspan="8" style="color:var(--text-secondary);text-align:center;padding:20px">Keine Einträge gefunden.</td></tr>';return;}
+  const bMap={};behaelter.forEach(b=>bMap[b.id]=b);
+  tb.innerHTML=data.map(l=>{const b=bMap[l.behaelterId]||{};return`<tr><td>${l.datum}</td><td style="color:var(--color-text-secondary)">${l.uhrzeit||'–'}</td><td style="font-weight:500">${l.behaelterId}</td><td style="color:var(--color-text-secondary)">${b.name||'–'}</td><td><span class="tag tag-ok">${l.anzahl||1}×</span></td><td style="color:var(--color-text-secondary);max-width:120px;overflow:hidden;text-overflow:ellipsis">${l.bemerkung||'–'}</td><td><span class="tag ${l.synced ? 'tag-ok' : 'tag-warn'}">${l.synced ? 'Erfasst' : 'Wartet...'}</span></td><td><button class="btn btn-sm" onclick="delLeerung('${l.id}')"><i class="ti ti-trash"></i></button></td></tr>`;}).join('');
+}
+
 function getExportData(){const mo=document.getElementById('exp-monat').value;return mo?leerungen.filter(l=>l.datum.startsWith(mo)):leerungen;}
+
 function updateVorschau(){
   const data=getExportData();const el=document.getElementById('vorschau-content');if(!data.length){el.innerHTML='<span>Keine Leerungen im Zeitraum.</span>';return;}
   const total=data.reduce((a,b)=>a+(b.anzahl||1),0);const byB={};data.forEach(l=>{byB[l.behaelterId]=(byB[l.behaelterId]||0)+(l.anzahl||1)});
   el.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px"><div class="card-sm"><div class="metric-label">Leerungen gesamt</div><div class="metric-val">${total}</div></div><div class="card-sm"><div class="metric-label">Behälter erfasst</div><div class="metric-val">${Object.keys(byB).length}</div></div></div><div class="section-title" style="font-size:13px">Nach Behälter</div>`+Object.entries(byB).map(([id,cnt])=>{const max=Math.max(...Object.values(byB));return`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:13px"><span>${id}</span><span style="font-weight:500">${cnt}×</span></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.round(cnt/max*100)}%"></div></div></div>`}).join('');
 }
+
 document.getElementById('exp-monat').addEventListener('change',updateVorschau);
+
 function exportCSV(){
   const mo=document.getElementById('exp-monat').value;const ag=document.getElementById('exp-ag').value||'–';const an=document.getElementById('exp-an').value||'–';const vn=document.getElementById('exp-vn').value||'–';const data=getExportData();if(!data.length){alert('Keine Daten.');return;}
   const bMap={};behaelter.forEach(b=>bMap[b.id]=b);const header=['Datum','Uhrzeit','Behälter-ID','Bezeichnung','Behältertyp','Anzahl Leerungen','Bemerkung','Auftraggeber','Auftragnehmer','Vertragsnummer','Norm'];
   const rows=data.map(l=>{const b=bMap[l.behaelterId]||{};return[l.datum,l.uhrzeit||'',l.behaelterId,b.name||'',b.typ||'',l.anzahl||1,l.bemerkung||'',ag,an,vn,'DIN 14803'].join(';')});
   const csv='\uFEFF'+[header.join(';'),...rows].join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`Leerungsnachweis_DIN14803_${mo||'gesamt'}.csv`;a.click();URL.revokeObjectURL(url);
 }
+
 function exportPDF(){
   const mo=document.getElementById('exp-monat').value;const ag=document.getElementById('exp-ag').value||'–';const an=document.getElementById('exp-an').value||'–';const vn=document.getElementById('exp-vn').value||'–';const data=getExportData();if(!data.length){alert('Keine Daten.');return;}
   const bMap={};behaelter.forEach(b=>bMap[b.id]=b);const total=data.reduce((a,b)=>a+(b.anzahl||1),0);
@@ -459,6 +547,8 @@ function exportPDF(){
   const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
+// Initialisierung bei App-Start
 updateMetrics();
 renderLetzt();
+synchronisiereOfflineEintraege();
 </script>
