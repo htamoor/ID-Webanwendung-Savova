@@ -632,6 +632,14 @@ function exportPDF(){
   const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
+// Automatisch speichern, wenn im Feld Enter gedrückt wird (z.B. durch Tastatur-Scanner)
+document.getElementById('inp-behaelter').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault(); // Verhindert ein Neuladen der Seite
+    erfassen();
+  }
+});
+
 // Initialisierung bei App-Start
 updateMetrics();
 renderLetzt();
