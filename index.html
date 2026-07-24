@@ -617,7 +617,9 @@ function renderTabelle(){
       <td>${l.datum}</td>
       <td style="color:var(--color-text-secondary)">${l.uhrzeit||'–'}</td>
       <td style="font-weight:500">${l.behaelterId}</td>
-      <td style="color:var(--color-text-secondary)">${b.name||'–'}</td>
+      <td style="color:var(--color-text-secondary)">
+        ${b.name ? `${b.name} (${b.typ || ''}) - ${b.Meisterei || ''}` : '–'}
+      </td>
       <td><span class="tag ${l.ereignis === 'Reguläre Leerung' ? 'tag-ok' : 'tag-warn'}">${l.ereignis}</span></td>
       <td style="color:var(--color-text-secondary);max-width:120px;overflow:hidden;text-overflow:ellipsis">${l.bemerkung||'–'}</td>
       <td><span class="tag ${isStorniert ? 'tag-err' : (l.synced ? 'tag-ok' : 'tag-warn')}">${isStorniert ? 'Storniert' : (l.synced ? 'Erfasst' : 'Wartet...')}</span></td>
