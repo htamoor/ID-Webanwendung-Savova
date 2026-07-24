@@ -388,6 +388,34 @@ async function speichereInSupabase(neueLeerung) {
   }
 } 
 
+// === STAMMDATEN AUS CLOUD LADEN ===
+async function ladeBehaelterAusSupabase() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('behaelter')
+      .select('*');
+
+    if (error) throw error;
+
+    if (data && data.length > 0) {
+      // Passt die Spaltennamen aus Supabase an das lokale Format an
+      behaelter = data.map(b => ({
+        id: b.id,
+        name: b.name || '–',
+        meisterei: b.meisterei || '',
+        los: b.los || ''
+      }));
+      save(); // Für Offline-Betrieb im LocalStorage zwischenspeichern
+      renderBehaelter();
+      buildFilter();
+      updateMetrics();
+      console.log("Behälter-Stammdaten erfolgreich geladen:", behaelter.length);
+    }
+  } catch (e) {
+    console.error("Fehler beim Laden der Behälter-Stammdaten:", e.message);
+  }
+}
+
 async function synchronisiereOfflineEintraege() {
   const unsynced = leerungen.filter(l => l.synced === false);
   if (unsynced.length === 0) return;
@@ -645,4 +673,5 @@ updateMetrics();
 renderLetzt();
 synchronisiereOfflineEintraege();
 aktiviereAutoFokus();
+ladeBehaelterAusSupabase();
 </script>
