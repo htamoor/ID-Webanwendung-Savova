@@ -688,10 +688,10 @@ async function exportPDF() {
       const nextYear = month === 12 ? year + 1 : year;
       const endDatumExklusiv = `${nextYear}-${pad(nextMonth)}-01`;
 
-      // WICHTIG: "Datum" mit großem 'D', exakt wie in deiner View!
+      // HIER KLEINES 'datum' FÜR SUPABASE FILTER BENUTZEN
       query = query
-        .gte('Datum', startDatum)
-        .lt('Datum', endDatumExklusiv);
+        .gte('datum', startDatum)
+        .lt('datum', endDatumExklusiv);
     }
 
     const { data, error } = await query;
@@ -704,14 +704,15 @@ async function exportPDF() {
 
     const total = data.length;
     const rows = data.map(l => {
-      const d = l.Datum || l.datum || '';
-      const u = l.Uhrzeit || l.uhrzeit || '–';
-      const tid = l['Transponder-ID'] || l.behaelter_id || '';
-      const ort = l['Standort/Bezeichnung'] || l.behaelter_name || '–';
-      const mei = l.Meisterei || l.meisterei || '–';
-      const los = l.Los || l.los || '–';
-      const erg = l['Ereignis/Besonderheit'] || l.ereignis || 'Reguläre Leerung';
-      const bem = l.Bemerkung || l.bemerkung || '';
+      // Flexibles Auslesen – egal wie PostgREST das Feld benannt hat
+      const d = l.datum || l.Datum || '';
+      const u = l.uhrzeit || l.Uhrzeit || '–';
+      const tid = l.behaelter_id || l['Transponder-ID'] || l.Transponder_ID || '';
+      const ort = l.behaelter_name || l['Standort/Bezeichnung'] || l.standort || '–';
+      const mei = l.meisterei || l.Meisterei || '–';
+      const los = l.los || l.Los || '–';
+      const erg = l.ereignis || l['Ereignis/Besonderheit'] || 'Reguläre Leerung';
+      const bem = l.bemerkung || l.Bemerkung || '';
 
       return `
         <tr>
