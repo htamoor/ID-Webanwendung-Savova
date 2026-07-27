@@ -587,21 +587,104 @@ function updateVorschau(){
 
 document.getElementById('exp-monat').addEventListener('change',updateVorschau);
 
-function exportCSV(){
-  const mo=document.getElementById('exp-monat').value;const ag=document.getElementById('exp-ag').value||'–';const an=document.getElementById('exp-an').value||'–';const vn=document.getElementById('exp-vn').value||'–';const data=getExportData();if(!data.length){alert('Keine Daten.');return;}
-  const stammMap={};behaelterStammdaten.forEach(b=>stammMap[b.id]=b);
-  const header=['Datum','Uhrzeit','Transponder-ID','Standort/Bezeichnung','Meisterei','Los','Behältertyp','Ereignis/Besonderheit','Bemerkung','Auftraggeber','Auftragnehmer','Vertragsnummer','Norm'];
-  const rows=data.map(l=>{const b=stammMap[l.behaelterId]||{};return[l.datum,l.uhrzeit||'',l.behaelterId,b.name||'',b.meisterei||'',b.los||'',b.typ||'',l.ereignis,l.bemerkung||'',ag,an,vn,'DIN 14803'].join(';')});
-  const csv='\uFEFF'+[header.join(';'),...rows].join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`Leerungsnachweis_DIN14803_${mo||'gesamt'}.csv`;a.click();URL.revokeObjectURL(url);
-}
+async function exportCSV() {
+  const mo = document.getElementById('exp-monat').value;
+  const ag = document.getElementById('exp-ag').value || '–';
+  const an = document.getElementById('exp-an').value || '–';
+  const vn = document.getElementById('exp-vn').value || '–';
 
-function exportPDF(){
-  const mo=document.getElementById('exp-monat').value;const ag=document.getElementById('exp-ag').value||'–';const an=document.getElementById('exp-an').value||'–';const vn=document.getElementById('exp-vn').value||'–';const data=getExportData();if(!data.length){alert('Keine Daten.');return;}
-  const stammMap={};behaelterStammdaten.forEach(b=>stammMap[b.id]=b);const total=data.length;
-  const rows=data.map(l=>{const b=stammMap[l.behaelterId]||{};return`<tr><td>${l.datum} ${l.uhrzeit||'–'}</td><td><strong>${l.behaelterId}</strong></td><td>${b.name||'–'}</td><td>${b.meisterei||'–'}</td><td>${b.los||'–'}</td><td>${l.ereignis}</td><td>${l.bemerkung||''}</td></tr>`}).join('');
-  const html=`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Leerungsnachweis DIN 14803</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#1a1a1a}h1{font-size:18px;margin-bottom:4px}.subtitle{color:#555;font-size:13px;margin-bottom:18px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;font-size:12px;margin-bottom:20px;padding:12px;background:#f5f5f5;border-radius:4px}.meta span{color:#555}.norm-badge{display:inline-block;background:#dbeafe;color:#1e40af;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:bold;margin-left:8px}table{width:100%;border-collapse:collapse;margin-top:8px}th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;background:#f0f0f0;padding:7px 10px;border-bottom:1px solid #ddd;text-align:left}td{padding:7px 10px;border-bottom:0.5px solid #eee;font-size:11.5px}tr:nth-child(even) td{background:#fafafa}.footer{margin-top:24px;font-size:10px;color:#888;border-top:1px solid #eee;padding-top:8px}.total-row td{font-weight:bold;background:#e8f5e9;border-top:2px solid #ccc}@media print{body{margin:15mm}}</style></head><body><h1>Leerungsnachweis <span class="norm-badge">DIN 14803</span></h1><div class="subtitle">Behälteridentifikationssystem – Monatsbericht ${mo||'Gesamtzeitraum'}</div><div class="meta"><div><span>Auftraggeber:</span><br><strong>${ag}</strong></div><div><span>Auftragnehmer:</span><br><strong>${an}</strong></div><div><span>Vertragsnummer:</span><br><strong>${vn}</strong></div><div><span>Berichtszeitraum:</span><br><strong>${mo||'alle'}</strong></div><div><span>Erstellt am:</span><br><strong>${new Date().toLocaleDateString('de-DE')}</strong></div><div><span>Erfolgreiche Leerungen:</span><br><strong>${total}</strong></div></div><table><thead><tr><th>Datum / Zeit</th><th>Transponder-ID</th><th>Bezeichnung</th><th>Meisterei</th><th>Los</th><th>Ereignis/Status</th><th>Bemerkung</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="total-row"><td colspan="5">Gesamt (abrechenbar)</td><td>${total}×</td><td></td></tr></tfoot></table><div class="footer">Dieses Dokument wurde automatisch erstellt gemäß DIN 14803.</div><script>window.onload=function(){window.print();}<\/script></body></html>`;
-  const blob=new Blob([html],{type:'text/html'});const url=URL.createObjectURL(blob);window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),60000);
-}
+  try {
+    // Live-Daten direkt aus der Supabase View abfragen
+    let query = supabaseClient.from('leerungen_export_view').select('*');
+    if (mo) {
+      query = query.gte('datum', `${mo}-01`).lte('datum', `${mo}-31`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      alert('Keine aktiven Daten in Supabase für diesen Zeitraum gefunden.');
+      return;
+    }
+
+    const header = ['Datum', 'Uhrzeit', 'Transponder-ID', 'Standort/Bezeichnung', 'Meisterei', 'Los', 'Behältertyp', 'Ereignis/Besonderheit', 'Bemerkung', 'Auftraggeber', 'Auftragnehmer', 'Vertragsnummer', 'Norm'];
+    const rows = data.map(l => [
+      l.datum,
+      l.uhrzeit || '',
+      l.behaelter_id,
+      l.behaelter_name || '–',
+      l.Meisterei || l.meisterei || '–',
+      l.los || '–',
+      l.behaelter_typ || '240 L',
+      l.ereignis || 'Reguläre Leerung',
+      l.bemerkung || '',
+      ag,
+      an,
+      vn,
+      'DIN 14803'
+    ].join(';'));
+
+    const csv = '\uFEFF' + [header.join(';'), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Leerungsnachweis_DIN14803_Cloud_${mo || 'gesamt'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showAlert('alert-area', 'CSV-Export aus Cloud erfolgreich!', 'success');
+  } catch (err) {
+    console.error("Export-Fehler:", err.message);
+    alert("Fehler beim Cloud-Export: " + err.message);
+  }
+
+// === PDF-EXPORT DIREKT AUS SUPABASE CLOUD ===
+async function exportPDF() {
+  const mo = document.getElementById('exp-monat').value;
+  const ag = document.getElementById('exp-ag').value || '–';
+  const an = document.getElementById('exp-an').value || '–';
+  const vn = document.getElementById('exp-vn').value || '–';
+
+  try {
+    // Live-Daten direkt aus der Supabase View abfragen
+    let query = supabaseClient.from('leerungen_export_view').select('*');
+    if (mo) {
+      query = query.gte('datum', `${mo}-01`).lte('datum', `${mo}-31`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      alert('Keine aktiven Daten in Supabase für diesen Zeitraum gefunden.');
+      return;
+    }
+
+    const total = data.length;
+    const rows = data.map(l => `
+      <tr>
+        <td>${l.datum} ${l.uhrzeit || '–'}</td>
+        <td><strong>${l.behaelter_id}</strong></td>
+        <td>${l.behaelter_name || '–'}</td>
+        <td>${l.Meisterei || l.meisterei || '–'}</td>
+        <td>${l.los || '–'}</td>
+        <td>${l.ereignis || 'Reguläre Leerung'}</td>
+        <td>${l.bemerkung || ''}</td>
+      </tr>
+    `).join('');
+
+    const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Leerungsnachweis DIN 14803</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#1a1a1a}h1{font-size:18px;margin-bottom:4px}.subtitle{color:#555;font-size:13px;margin-bottom:18px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;font-size:12px;margin-bottom:20px;padding:12px;background:#f5f5f5;border-radius:4px}.meta span{color:#555}.norm-badge{display:inline-block;background:#dbeafe;color:#1e40af;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:bold;margin-left:8px}table{width:100%;border-collapse:collapse;margin-top:8px}th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;background:#f0f0f0;padding:7px 10px;border-bottom:1px solid #ddd;text-align:left}td{padding:7px 10px;border-bottom:0.5px solid #eee;font-size:11.5px}tr:nth-child(even) td{background:#fafafa}.footer{margin-top:24px;font-size:10px;color:#888;border-top:1px solid #eee;padding-top:8px}.total-row td{font-weight:bold;background:#e8f5e9;border-top:2px solid #ccc}@media print{body{margin:15mm}}</style></head><body><h1>Leerungsnachweis <span class="norm-badge">DIN 14803</span></h1><div class="subtitle">Behälteridentifikationssystem – Monatsbericht ${mo||'Gesamtzeitraum'}</div><div class="meta"><div><span>Auftraggeber:</span><br><strong>${ag}</strong></div><div><span>Auftragnehmer:</span><br><strong>${an}</strong></div><div><span>Vertragsnummer:</span><br><strong>${vn}</strong></div><div><span>Berichtszeitraum:</span><br><strong>${mo||'alle'}</strong></div><div><span>Erstellt am:</span><br><strong>${new Date().toLocaleDateString('de-DE')}</strong></div><div><span>Erfolgreiche Leerungen:</span><br><strong>${total}</strong></div></div><table><thead><tr><th>Datum / Zeit</th><th>Transponder-ID</th><th>Bezeichnung</th><th>Meisterei</th><th>Los</th><th>Ereignis/Status</th><th>Bemerkung</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="total-row"><td colspan="5">Gesamt (abrechenbar)</td><td>${total}×</td><td></td></tr></tfoot></table><div class="footer">Dieses Dokument wurde automatisch aus der Datenbank erstellt gemäß DIN 14803.</div><script>window.onload=function(){window.print();}<\/script></body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    console.error("Export-Fehler:", err.message);
+    alert("Fehler beim Cloud-Export: " + err.message);
+  }
 
 // Enter-Taste im Eingabefeld abfangen
 document.getElementById('inp-behaelter').addEventListener('keydown', (e) => {
