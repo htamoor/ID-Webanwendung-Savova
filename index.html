@@ -611,38 +611,37 @@ async function exportCSV() {
   try {
     let query = supabaseClient.from('leerungen_export_view').select('*');
 
-    // Filter auf den gewählten Monat setzen
-    if (mo) {
-      const [year, month] = mo.split('-').map(Number);
-      const startDatum = `${year}-${pad(month)}-01`;
-
-      // Erster Tag des Folgemonats
-      const nextMonth = month === 12 ? 1 : month + 1;
-      const nextYear = month === 12 ? year + 1 : year;
-      const endDatumExklusiv = `${nextYear}-${pad(nextMonth)}-01`;
-
-      // WICHTIG: "Datum" mit großem 'D', exakt wie in deiner View!
-      query = query
-        .gte('Datum', startDatum)
-        .lt('Datum', endDatumExklusiv);
-    }
-
+    // Alle Daten holen (ohne fragilen SQL-Spaltenfilter)
     const { data, error } = await query;
     if (error) throw error;
 
     if (!data || data.length === 0) {
-      alert(`Keine Leerungen in Supabase für den Monat ${mo || 'ausgewählt'} gefunden.`);
+      alert('Keine Daten in Supabase gefunden.');
+      return;
+    }
+
+    // Monat direkt sauber in JS filtern
+    let gefilterteDaten = data;
+    if (mo) {
+      gefilterteDaten = data.filter(l => {
+        const d = l.Datum || l.datum || l['Datum / Zeit'] || '';
+        return d.startsWith(mo);
+      });
+    }
+
+    if (gefilterteDaten.length === 0) {
+      alert(`Keine Leerungen für den Monat ${mo} gefunden.`);
       return;
     }
 
     const header = ['Datum', 'Uhrzeit', 'Transponder-ID', 'Standort/Bezeichnung', 'Meisterei', 'Los', 'Behältertyp', 'Ereignis/Besonderheit', 'Bemerkung', 'Auftraggeber', 'Auftragnehmer', 'Vertragsnummer', 'Norm'];
     
-    // Mapped exakt die Spaltennamen deiner View
-    const rows = data.map(l => [
+    // Mapped alle Felder flexibel
+    const rows = gefilterteDaten.map(l => [
       l.Datum || l.datum || '',
       l.Uhrzeit || l.uhrzeit || '',
-      l['Transponder-ID'] || l.behaelter_id || '',
-      l['Standort/Bezeichnung'] || l.behaelter_name || '–',
+      l['Transponder-ID'] || l.behaelter_id || l.Transponder_ID || '',
+      l['Standort/Bezeichnung'] || l.behaelter_name || l.standort || '–',
       l.Meisterei || l.meisterei || '–',
       l.Los || l.los || '–',
       l.Behältertyp || l.behaelter_typ || '240 L',
@@ -663,7 +662,7 @@ async function exportCSV() {
     a.click();
     URL.revokeObjectURL(url);
 
-    showAlert('alert-area', `CSV-Export für ${mo} erfolgreich! (${data.length} Datensätze)`, 'success');
+    showAlert('alert-area', `CSV-Export für ${mo || 'alle Monate'} erfolgreich! (${gefilterteDaten.length} Einträge)`, 'success');
   } catch (err) {
     console.error("Export-Fehler:", err.message);
     alert("Fehler beim Cloud-Export: " + err.message);
