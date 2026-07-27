@@ -167,7 +167,9 @@ tr.storniert-row td{color:var(--color-text-tertiary) !important;opacity:0.5;text
         <div class="section-title"><i class="ti ti-calendar" style="font-size:16px" aria-hidden="true"></i> Berichtszeitraum</div>
         <div class="form-group">
           <label>Monat / Jahr</label>
-          <input type="month" id="exp-monat">
+            <select id="exp-monat">
+              <option value="">-- Alle Monate (Gesamt) --</option>
+            </select>        
         </div>
         <div class="form-group">
           <label>Auftraggeber (Autobahnmeisterei)</label>
@@ -728,10 +730,46 @@ document.getElementById('inp-behaelter').addEventListener('keydown', (e) => {
   }
 });
 
+// Befüllt das Export-Monats-Dropdown automatisch mit allen verfügbaren Monaten
+async function ladeExportMonate() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('leerungen_export_view')
+      .select('datum');
+
+    if (error || !data) return;
+
+    // Alle einzigartigen Monate filtern (z.B. "2026-07")
+    const monateSet = new Set();
+    data.forEach(item => {
+      const d = item.datum || item.Datum;
+      if (d && d.length >= 7) {
+        monateSet.add(d.substring(0, 7));
+      }
+    });
+
+    const monateArray = Array.from(monateSet).sort().reverse();
+    const selectEl = document.getElementById('exp-monat');
+    
+    // Dropdown neu aufbauen
+    selectEl.innerHTML = '<option value="">-- Alle Monate (Gesamt) --</option>';
+    monateArray.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m; // Zeigt z. B. "2026-07" an
+      selectEl.appendChild(opt);
+    });
+
+  } catch (e) {
+    console.error("Fehler beim Laden der Monatsliste:", e);
+  }
+}
+
 // Initialisierung bei App-Start
 updateMetrics();
 renderLetzt();
 synchronisiereOfflineEintraege();
 aktiviereAutoFokus();
 ladeBehaelterAusSupabase();
+ladeExportMonate();
 </script>
