@@ -232,6 +232,17 @@ let behaelterStammdaten = JSON.parse(localStorage.getItem('din_behaelter_stamm')
 let bluetoothCharacteristic;
 let focusTimeout;
 
+// Helper: XSS Schutz
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function save() {
   try {
     localStorage.setItem('din_leerungen', JSON.stringify(leerungen));
@@ -392,13 +403,13 @@ async function erfassen() {
 
   const jetzt = new Date();
   const localEntry = {
-    id: String(Date.now()), 
-    datum: jetzt.toISOString().split('T')[0],
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), 
+    datum: `${jetzt.getFullYear()}-${pad(jetzt.getMonth()+1)}-${pad(jetzt.getDate())}`,
     uhrzeit: jetzt.toTimeString().split(' ')[0].substring(0, 5),
     behaelterId: bid,
     bemerkung: bemerkung,
     ereignis: ereignis, 
-    status: 'Erfasst',    
+    status: 'Erfasst',     
     synced: false 
   };
 
@@ -465,7 +476,7 @@ function updateMetrics(){
   document.getElementById('m-behaelter').textContent=behaelterStammdaten.length;
   
   const last=leerungen[0]; 
-  document.getElementById('m-letzt').textContent=last?last.datum.slice(5)+' '+last.behaelterId:'–';
+  document.getElementById('m-letzt').textContent=last?last.datum.slice(5)+' '+escapeHtml(last.behaelterId):'–';
 }
 
 function renderLetzt(){
@@ -476,8 +487,8 @@ function renderLetzt(){
     const isStorniert = l.status === 'Storniert';
     const b = stammMap[l.behaelterId] || {};
     return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--color-border-tertiary); ${isStorniert ? 'opacity:0.4;text-decoration:line-through;' : ''}">
-      <span style="color:var(--color-text-secondary)">${l.datum} ${l.uhrzeit||''}</span>
-      <span style="font-weight:500">${l.behaelterId} (${b.name||'–'})</span>
+      <span style="color:var(--color-text-secondary)">${escapeHtml(l.datum)} ${escapeHtml(l.uhrzeit||'')}</span>
+      <span style="font-weight:500">${escapeHtml(l.behaelterId)} (${escapeHtml(b.name||'–')})</span>
       <span class="tag ${isStorniert ? 'tag-err' : (l.synced ? 'tag-ok' : 'tag-warn')}">${isStorniert ? 'Storniert' : (l.synced ? 'Cloud' : 'Lokal')}</span>
     </div>`
   }).join('');
@@ -500,7 +511,7 @@ function today(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+
 function showAlert(id,msg,type){
   const el=document.getElementById(id);
   const alertClass = type === 'success' ? 'alert-success' : 'alert-err';
-  el.innerHTML=`<div class="alert ${alertClass}">${msg}</div>`;
+  el.innerHTML=`<div class="alert ${alertClass}">${escapeHtml(msg)}</div>`;
   setTimeout(()=>{el.innerHTML=''},3500);
 }
 
@@ -520,7 +531,6 @@ function buildFilter(){
   if(cur2)sel2.value=cur2;
 }
 
-// === DIREKTE BEHÄLTER- & ERFASSUNGSLISTE ===
 function renderBehaelterTabelle(){
   const mo=document.getElementById('f-monat').value;
   const mei=document.getElementById('f-meisterei').value;
@@ -556,16 +566,16 @@ function renderBehaelterTabelle(){
     const isStorniert = l.status === 'Storniert';
     
     return `<tr class="${isStorniert ? 'storniert-row' : ''}">
-      <td>${l.datum} <span style="color:var(--color-text-secondary);font-size:11px">${l.uhrzeit||''}</span></td>
-      <td style="font-weight:500">${l.behaelterId}</td>
-      <td>${b.name||'–'}</td>
-      <td>${b.meisterei||'–'}</td>
-      <td>${b.los||'–'}</td>
-      <td>${b.typ||'240 L'}</td>
-      <td><span class="tag ${l.ereignis === 'Reguläre Leerung' ? 'tag-ok' : 'tag-warn'}">${l.ereignis}</span></td>
+      <td>${escapeHtml(l.datum)} <span style="color:var(--color-text-secondary);font-size:11px">${escapeHtml(l.uhrzeit||'')}</span></td>
+      <td style="font-weight:500">${escapeHtml(l.behaelterId)}</td>
+      <td>${escapeHtml(b.name||'–')}</td>
+      <td>${escapeHtml(b.meisterei||'–')}</td>
+      <td>${escapeHtml(b.los||'–')}</td>
+      <td>${escapeHtml(b.typ||'240 L')}</td>
+      <td><span class="tag ${l.ereignis === 'Reguläre Leerung' ? 'tag-ok' : 'tag-warn'}">${escapeHtml(l.ereignis)}</span></td>
       <td><span class="tag ${isStorniert ? 'tag-err' : (l.synced ? 'tag-ok' : 'tag-warn')}">${isStorniert ? 'Storniert' : (l.synced ? 'Erfasst' : 'Wartet...')}</span></td>
       <td>
-        <button class="btn btn-sm" onclick="storniereLeerung('${l.id}')" ${isStorniert ? 'disabled' : ''}>
+        <button class="btn btn-sm" onclick="storniereLeerung('${escapeHtml(l.id)}')" ${isStorniert ? 'disabled' : ''}>
           <i class="ti ti-backspace"></i> Stornieren
         </button>
       </td>
@@ -580,9 +590,12 @@ function getExportData(){
 }
 
 function updateVorschau(){
-  const data=getExportData();const el=document.getElementById('vorschau-content');if(!data.length){el.innerHTML='<span>Keine aktiven Leerungen im Zeitraum.</span>';return;}
+  const data=getExportData();
+  const el=document.getElementById('vorschau-content');
+  if(!data.length){el.innerHTML='<span>Keine aktiven Leerungen im Zeitraum.</span>';return;}
   const total=data.length;const byB={};data.forEach(l=>{byB[l.behaelterId]=(byB[l.behaelterId]||0)+1});
-  el.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px"><div class="card-sm"><div class="metric-label">Erfassungen gesamt</div><div class="metric-val">${total}</div></div><div class="card-sm"><div class="metric-label">Behälter erfasst</div><div class="metric-val">${Object.keys(byB).length}</div></div></div><div class="section-title" style="font-size:13px">Nach Behälter</div>`+Object.entries(byB).map(([id,cnt])=>{const max=Math.max(...Object.values(byB));return`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:13px"><span>${id}</span><span style="font-weight:500">${cnt}×</span></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.round(cnt/max*100)}%"></div></div></div>`}).join('');
+  
+  el.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px"><div class="card-sm"><div class="metric-label">Erfassungen gesamt</div><div class="metric-val">${total}</div></div><div class="card-sm"><div class="metric-label">Behälter erfasst</div><div class="metric-val">${Object.keys(byB).length}</div></div></div><div class="section-title" style="font-size:13px">Nach Behälter</div>`+Object.entries(byB).map(([id,cnt])=>{const max=Math.max(...Object.values(byB));return`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:13px"><span>${escapeHtml(id)}</span><span style="font-weight:500">${cnt}×</span></div><div class="progress-bar"><div class="progress-fill" style="width:${Math.round(cnt/max*100)}%"></div></div></div>`}).join('');
 }
 
 document.getElementById('exp-monat').addEventListener('change',updateVorschau);
@@ -594,7 +607,6 @@ async function exportCSV() {
   const vn = document.getElementById('exp-vn').value || '–';
 
   try {
-    // Live-Daten direkt aus der Supabase View abfragen
     let query = supabaseClient.from('leerungen_export_view').select('*');
     if (mo) {
       query = query.gte('datum', `${mo}-01`).lte('datum', `${mo}-31`);
@@ -639,8 +651,8 @@ async function exportCSV() {
     console.error("Export-Fehler:", err.message);
     alert("Fehler beim Cloud-Export: " + err.message);
   }
+}
 
-// === PDF-EXPORT DIREKT AUS SUPABASE CLOUD ===
 async function exportPDF() {
   const mo = document.getElementById('exp-monat').value;
   const ag = document.getElementById('exp-ag').value || '–';
@@ -648,7 +660,6 @@ async function exportPDF() {
   const vn = document.getElementById('exp-vn').value || '–';
 
   try {
-    // Live-Daten direkt aus der Supabase View abfragen
     let query = supabaseClient.from('leerungen_export_view').select('*');
     if (mo) {
       query = query.gte('datum', `${mo}-01`).lte('datum', `${mo}-31`);
@@ -665,17 +676,17 @@ async function exportPDF() {
     const total = data.length;
     const rows = data.map(l => `
       <tr>
-        <td>${l.datum} ${l.uhrzeit || '–'}</td>
-        <td><strong>${l.behaelter_id}</strong></td>
-        <td>${l.behaelter_name || '–'}</td>
-        <td>${l.Meisterei || l.meisterei || '–'}</td>
-        <td>${l.los || '–'}</td>
-        <td>${l.ereignis || 'Reguläre Leerung'}</td>
-        <td>${l.bemerkung || ''}</td>
+        <td>${escapeHtml(l.datum)} ${escapeHtml(l.uhrzeit || '–')}</td>
+        <td><strong>${escapeHtml(l.behaelter_id)}</strong></td>
+        <td>${escapeHtml(l.behaelter_name || '–')}</td>
+        <td>${escapeHtml(l.Meisterei || l.meisterei || '–')}</td>
+        <td>${escapeHtml(l.los || '–')}</td>
+        <td>${escapeHtml(l.ereignis || 'Reguläre Leerung')}</td>
+        <td>${escapeHtml(l.bemerkung || '')}</td>
       </tr>
     `).join('');
 
-    const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Leerungsnachweis DIN 14803</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#1a1a1a}h1{font-size:18px;margin-bottom:4px}.subtitle{color:#555;font-size:13px;margin-bottom:18px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;font-size:12px;margin-bottom:20px;padding:12px;background:#f5f5f5;border-radius:4px}.meta span{color:#555}.norm-badge{display:inline-block;background:#dbeafe;color:#1e40af;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:bold;margin-left:8px}table{width:100%;border-collapse:collapse;margin-top:8px}th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;background:#f0f0f0;padding:7px 10px;border-bottom:1px solid #ddd;text-align:left}td{padding:7px 10px;border-bottom:0.5px solid #eee;font-size:11.5px}tr:nth-child(even) td{background:#fafafa}.footer{margin-top:24px;font-size:10px;color:#888;border-top:1px solid #eee;padding-top:8px}.total-row td{font-weight:bold;background:#e8f5e9;border-top:2px solid #ccc}@media print{body{margin:15mm}}</style></head><body><h1>Leerungsnachweis <span class="norm-badge">DIN 14803</span></h1><div class="subtitle">Behälteridentifikationssystem – Monatsbericht ${mo||'Gesamtzeitraum'}</div><div class="meta"><div><span>Auftraggeber:</span><br><strong>${ag}</strong></div><div><span>Auftragnehmer:</span><br><strong>${an}</strong></div><div><span>Vertragsnummer:</span><br><strong>${vn}</strong></div><div><span>Berichtszeitraum:</span><br><strong>${mo||'alle'}</strong></div><div><span>Erstellt am:</span><br><strong>${new Date().toLocaleDateString('de-DE')}</strong></div><div><span>Erfolgreiche Leerungen:</span><br><strong>${total}</strong></div></div><table><thead><tr><th>Datum / Zeit</th><th>Transponder-ID</th><th>Bezeichnung</th><th>Meisterei</th><th>Los</th><th>Ereignis/Status</th><th>Bemerkung</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="total-row"><td colspan="5">Gesamt (abrechenbar)</td><td>${total}×</td><td></td></tr></tfoot></table><div class="footer">Dieses Dokument wurde automatisch aus der Datenbank erstellt gemäß DIN 14803.</div><script>window.onload=function(){window.print();}<\/script></body></html>`;
+    const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Leerungsnachweis DIN 14803</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#1a1a1a}h1{font-size:18px;margin-bottom:4px}.subtitle{color:#555;font-size:13px;margin-bottom:18px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;font-size:12px;margin-bottom:20px;padding:12px;background:#f5f5f5;border-radius:4px}.meta span{color:#555}.norm-badge{display:inline-block;background:#dbeafe;color:#1e40af;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:bold;margin-left:8px}table{width:100%;border-collapse:collapse;margin-top:8px}th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;background:#f0f0f0;padding:7px 10px;border-bottom:1px solid #ddd;text-align:left}td{padding:7px 10px;border-bottom:0.5px solid #eee;font-size:11.5px}tr:nth-child(even) td{background:#fafafa}.footer{margin-top:24px;font-size:10px;color:#888;border-top:1px solid #eee;padding-top:8px}.total-row td{font-weight:bold;background:#e8f5e9;border-top:2px solid #ccc}@media print{body{margin:15mm}}</style></head><body><h1>Leerungsnachweis <span class="norm-badge">DIN 14803</span></h1><div class="subtitle">Behälteridentifikationssystem – Monatsbericht ${escapeHtml(mo||'Gesamtzeitraum')}</div><div class="meta"><div><span>Auftraggeber:</span><br><strong>${escapeHtml(ag)}</strong></div><div><span>Auftragnehmer:</span><br><strong>${escapeHtml(an)}</strong></div><div><span>Vertragsnummer:</span><br><strong>${escapeHtml(vn)}</strong></div><div><span>Berichtszeitraum:</span><br><strong>${escapeHtml(mo||'alle')}</strong></div><div><span>Erstellt am:</span><br><strong>${new Date().toLocaleDateString('de-DE')}</strong></div><div><span>Erfolgreiche Leerungen:</span><br><strong>${total}</strong></div></div><table><thead><tr><th>Datum / Zeit</th><th>Transponder-ID</th><th>Bezeichnung</th><th>Meisterei</th><th>Los</th><th>Ereignis/Status</th><th>Bemerkung</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="total-row"><td colspan="5">Gesamt (abrechenbar)</td><td>${total}×</td><td></td></tr></tfoot></table><div class="footer">Dieses Dokument wurde automatisch aus der Datenbank erstellt gemäß DIN 14803.</div><script>window.onload=function(){window.print();}<\/script></body></html>`;
 
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
@@ -685,6 +696,7 @@ async function exportPDF() {
     console.error("Export-Fehler:", err.message);
     alert("Fehler beim Cloud-Export: " + err.message);
   }
+}
 
 // Enter-Taste im Eingabefeld abfangen
 document.getElementById('inp-behaelter').addEventListener('keydown', (e) => {
