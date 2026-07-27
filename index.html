@@ -603,7 +603,7 @@ function updateVorschau(){
 document.getElementById('exp-monat').addEventListener('change',updateVorschau);
 
 async function exportCSV() {
-  const mo = document.getElementById('exp-monat').value; // Gibt z. B. "2026-07" zurück
+  const mo = document.getElementById('exp-monat').value; // z.B. "2026-07"
   const ag = document.getElementById('exp-ag').value || '–';
   const an = document.getElementById('exp-an').value || '–';
   const vn = document.getElementById('exp-vn').value || '–';
@@ -611,41 +611,43 @@ async function exportCSV() {
   try {
     let query = supabaseClient.from('leerungen_export_view').select('*');
 
-    // Wenn ein Monat ausgewählt wurde, exakte Monatsgrenzen berechnen
+    // Filter auf den gewählten Monat setzen
     if (mo) {
       const [year, month] = mo.split('-').map(Number);
       const startDatum = `${year}-${pad(month)}-01`;
 
-      // Erster Tag des NÄCHSTEN Monats (z. B. 2026-08-01 für Juli)
+      // Erster Tag des Folgemonats
       const nextMonth = month === 12 ? 1 : month + 1;
       const nextYear = month === 12 ? year + 1 : year;
       const endDatumExklusiv = `${nextYear}-${pad(nextMonth)}-01`;
 
-      // Filtert exakt von 01. des Monats bis exklusiv 01. des Folgemonats
+      // WICHTIG: "Datum" mit großem 'D', exakt wie in deiner View!
       query = query
-        .gte('datum', startDatum)
-        .lt('datum', endDatumExklusiv);
+        .gte('Datum', startDatum)
+        .lt('Datum', endDatumExklusiv);
     }
 
     const { data, error } = await query;
     if (error) throw error;
 
     if (!data || data.length === 0) {
-      alert('Keine Scans/Leerungen für den ausgewählten Monat gefunden.');
+      alert(`Keine Leerungen in Supabase für den Monat ${mo || 'ausgewählt'} gefunden.`);
       return;
     }
 
     const header = ['Datum', 'Uhrzeit', 'Transponder-ID', 'Standort/Bezeichnung', 'Meisterei', 'Los', 'Behältertyp', 'Ereignis/Besonderheit', 'Bemerkung', 'Auftraggeber', 'Auftragnehmer', 'Vertragsnummer', 'Norm'];
+    
+    // Mapped exakt die Spaltennamen deiner View
     const rows = data.map(l => [
-      l.datum || l.Datum || '',
-      l.uhrzeit || l.Uhrzeit || '',
-      l.behaelter_id || l['Transponder-ID'] || '',
-      l.behaelter_name || l['Standort/Bezeichnung'] || '–',
+      l.Datum || l.datum || '',
+      l.Uhrzeit || l.uhrzeit || '',
+      l['Transponder-ID'] || l.behaelter_id || '',
+      l['Standort/Bezeichnung'] || l.behaelter_name || '–',
       l.Meisterei || l.meisterei || '–',
-      l.los || l.Los || '–',
-      l.behaelter_typ || l.Behältertyp || '240 L',
-      l.ereignis || l['Ereignis/Besonderheit'] || 'Reguläre Leerung',
-      l.bemerkung || l.Bemerkung || '',
+      l.Los || l.los || '–',
+      l.Behältertyp || l.behaelter_typ || '240 L',
+      l['Ereignis/Besonderheit'] || l.ereignis || 'Reguläre Leerung',
+      l.Bemerkung || l.bemerkung || '',
       ag,
       an,
       vn,
@@ -661,10 +663,10 @@ async function exportCSV() {
     a.click();
     URL.revokeObjectURL(url);
 
-    showAlert('alert-area', `CSV-Export für ${mo || 'alle Monate'} erfolgreich!`, 'success');
+    showAlert('alert-area', `CSV-Export für ${mo} erfolgreich! (${data.length} Datensätze)`, 'success');
   } catch (err) {
     console.error("Export-Fehler:", err.message);
-    alert("Fehler beim Export: " + err.message);
+    alert("Fehler beim Cloud-Export: " + err.message);
   }
 }
 
