@@ -679,40 +679,40 @@ async function exportPDF() {
   try {
     let query = supabaseClient.from('leerungen_export_view').select('*');
 
-    // Filter auf den gewählten Monat setzen
-    if (mo) {
-      const [year, month] = mo.split('-').map(Number);
-      const startDatum = `${year}-${pad(month)}-01`;
-
-      const nextMonth = month === 12 ? 1 : month + 1;
-      const nextYear = month === 12 ? year + 1 : year;
-      const endDatumExklusiv = `${nextYear}-${pad(nextMonth)}-01`;
-
-      // HIER KLEINES 'datum' FÜR SUPABASE FILTER BENUTZEN
-      query = query
-        .gte('datum', startDatum)
-        .lt('datum', endDatumExklusiv);
-    }
-
+    // Wir holen zuerst die Daten und filtern den Monat direkt sauber in JS,
+    // damit PostgREST nicht wegen abweichenden Spaltennamen in der SQL-View abbricht!
     const { data, error } = await query;
     if (error) throw error;
 
     if (!data || data.length === 0) {
-      alert(`Keine Leerungen in Supabase für den Monat ${mo || 'ausgewählt'} gefunden.`);
+      alert('Keine Leerungen in Supabase gefunden.');
       return;
     }
 
-    const total = data.length;
-    const rows = data.map(l => {
-      // Flexibles Auslesen – egal wie PostgREST das Feld benannt hat
-      const d = l.datum || l.Datum || '';
-      const u = l.uhrzeit || l.Uhrzeit || '–';
-      const tid = l.behaelter_id || l['Transponder-ID'] || l.Transponder_ID || '';
-      const ort = l.behaelter_name || l['Standort/Bezeichnung'] || l.standort || '–';
-      const mei = l.meisterei || l.Meisterei || '–';
-      const los = l.los || l.Los || '–';
-      const erg = l.ereignis || l['Ereignis/Besonderheit'] || 'Reguläre Leerung';
-      const bem = l.bemerkung || l.Bemerkung || '';
+    // JS-Filter für den Monat (funktioniert immer, egal wie die Spalte in Postgres heißt!)
+    let gefilterteDaten = data;
+    if (mo) {
+      gefilterteDaten = data.filter(l => {
+        const d = l.Datum || l.datum || l['Datum / Zeit'] || '';
+        return d.startsWith(mo);
+      });
+    }
+
+    if (gefilterteDaten.length === 0) {
+      alert(`Keine Leerungen für den Monat ${mo} gefunden.`);
+      return;
+    }
+
+    const total = gefilterteDaten.length;
+    const rows = gefilterteDaten.map(l => {
+      const d = l.Datum || l.datum || '';
+      const u = l.Uhrzeit || l.uhrzeit || '–';
+      const tid = l['Transponder-ID'] || l.behaelter_id || l.Transponder_ID || '';
+      const ort = l['Standort/Bezeichnung'] || l.behaelter_name || l.standort || '–';
+      const mei = l.Meisterei || l.meisterei || '–';
+      const los = l.Los || l.los || '–';
+      const erg = l['Ereignis/Besonderheit'] || l.ereignis || 'Reguläre Leerung';
+      const bem = l.Bemerkung || l.bemerkung || '';
 
       return `
         <tr>
@@ -729,10 +729,13 @@ async function exportPDF() {
 
     const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Leerungsnachweis DIN 14803</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#1a1a1a}h1{font-size:18px;margin-bottom:4px}.subtitle{color:#555;font-size:13px;margin-bottom:18px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;font-size:12px;margin-bottom:20px;padding:12px;background:#f5f5f5;border-radius:4px}.meta span{color:#555}.norm-badge{display:inline-block;background:#dbeafe;color:#1e40af;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:bold;margin-left:8px}table{width:100%;border-collapse:collapse;margin-top:8px}th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;background:#f0f0f0;padding:7px 10px;border-bottom:1px solid #ddd;text-align:left}td{padding:7px 10px;border-bottom:0.5px solid #eee;font-size:11.5px}tr:nth-child(even) td{background:#fafafa}.footer{margin-top:24px;font-size:10px;color:#888;border-top:1px solid #eee;padding-top:8px}.total-row td{font-weight:bold;background:#e8f5e9;border-top:2px solid #ccc}@media print{body{margin:15mm}}</style></head><body><h1>Leerungsnachweis <span class="norm-badge">DIN 14803</span></h1><div class="subtitle">Behälteridentifikationssystem – Monatsbericht ${escapeHtml(mo||'Gesamtzeitraum')}</div><div class="meta"><div><span>Auftraggeber:</span><br><strong>${escapeHtml(ag)}</strong></div><div><span>Auftragnehmer:</span><br><strong>${escapeHtml(an)}</strong></div><div><span>Vertragsnummer:</span><br><strong>${escapeHtml(vn)}</strong></div><div><span>Berichtszeitraum:</span><br><strong>${escapeHtml(mo||'alle')}</strong></div><div><span>Erstellt am:</span><br><strong>${new Date().toLocaleDateString('de-DE')}</strong></div><div><span>Erfolgreiche Leerungen:</span><br><strong>${total}</strong></div></div><table><thead><tr><th>Datum / Zeit</th><th>Transponder-ID</th><th>Bezeichnung</th><th>Meisterei</th><th>Los</th><th>Ereignis/Status</th><th>Bemerkung</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="total-row"><td colspan="5">Gesamt (abrechenbar)</td><td>${total}×</td><td></td></tr></tfoot></table><div class="footer">Dieses Dokument wurde automatisch aus der Datenbank erstellt gemäß DIN 14803.</div><script>window.onload=function(){window.print();}<\/script></body></html>`;
 
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    } else {
+      alert('Pop-up wurde vom Browser blockiert! Bitte erlaube Pop-ups für diese Seite.');
+    }
   } catch (err) {
     console.error("Export-Fehler:", err.message);
     alert("Fehler beim PDF-Export: " + err.message);
