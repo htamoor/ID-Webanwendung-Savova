@@ -261,7 +261,7 @@ function save() {
 async function ladeBehaelterAusSupabase() {
   try {
     const { data, error } = await supabaseClient
-      .from('behaelter')
+      .from('Behälter')
       .select('*');
 
     if (error) throw error;
