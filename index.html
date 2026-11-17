@@ -642,7 +642,6 @@ function gruppiereNachAnlageUndTag(gefilterteDaten, stammMap) {
     gruppen[key].anzahl += 1;
   });
 
-  // Sortieren: Nach Datum aufsteigend, dann nach Anlage alphabetisch
   return Object.values(gruppen).sort((a, b) => {
     if (a.datum !== b.datum) return a.datum.localeCompare(b.datum);
     return a.anlage.localeCompare(b.anlage);
@@ -897,7 +896,7 @@ async function exportPDF() {
       </table>
 
       <div class="footer">Dieses Dokument wurde automatisch aus der Supabase-Datenbank erstellt gemäß DIN 14803.</div>
-      <script>window.onload=function(){window.print();}<\/script>
+      ${'<' + 'script>window.onload=function(){window.print();}<' + '/script>'}
     </body>
     </html>`;
 
@@ -913,7 +912,7 @@ async function exportPDF() {
     alert("Fehler beim PDF-Export: " + err.message);
   }
 }
-  
+
 async function ladeExportMonate() {
   try {
     const { data, error } = await supabaseClient
