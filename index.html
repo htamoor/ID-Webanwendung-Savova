@@ -617,6 +617,16 @@ function formatDatumDE(isoDate) {
   return isoDate;
 }
 
+// Hilfsfunktion: Sortiert Einzelnachweise chronologisch nach Datum & Uhrzeit aufsteigend
+function sortiereNachDatum(daten) {
+  return [...daten].sort((a, b) => {
+    const datA = a.datum || '';
+    const datB = b.datum || '';
+    if (datA !== datB) return datA.localeCompare(datB);
+    return (a.uhrzeit || '').localeCompare(b.uhrzeit || '');
+  });
+}
+
 // Hilfsfunktion: Gruppiert Leerungen nach Datum + Anlage + Meisterei + Los
 function gruppiereNachAnlageUndTag(gefilterteDaten, stammMap) {
   const gruppen = {};
@@ -648,7 +658,7 @@ function gruppiereNachAnlageUndTag(gefilterteDaten, stammMap) {
   });
 }
 
-// 1. CSV EXPORT MIT ZUSAMMENFASSUNG PRO ANLAGE & TAG + EINZELNACHWEIS
+// 1. CSV EXPORT MIT ZUSAMMENFASSUNG PRO ANLAGE & TAG + EINZELNACHWEIS (NACH DATUM SORTIERT)
 async function exportCSV() {
   const mo = document.getElementById('exp-monat').value;
   const ag = document.getElementById('exp-ag').value;
@@ -685,7 +695,10 @@ async function exportCSV() {
       return;
     }
 
-    // Gruppierte Zusammenfassung pro Tag & Anlage
+    // Chronologisch nach Datum & Uhrzeit sortieren
+    gefilterteDaten = sortiereNachDatum(gefilterteDaten);
+
+    // Gruppierte Zusammenfassung pro Tag & Anlage (bereits nach Datum sortiert)
     const zusammenfassung = gruppiereNachAnlageUndTag(gefilterteDaten, stammMap);
     const sumHeader = ['Datum', 'Anlage / Standort', 'Autobahnmeisterei', 'Los', 'Anzahl Entleerungen', 'Beschreibung'];
     const sumRows = zusammenfassung.map(g => [
@@ -697,7 +710,7 @@ async function exportCSV() {
       `Am ${g.datumDE} haben in der Anlage ${g.anlage} der ${g.meisterei} insgesamt ${g.anzahl} Entleerungen stattgefunden.`
     ].join(';'));
 
-    // Einzelnachweise
+    // Einzelnachweise (nach Datum & Uhrzeit sortiert)
     const detailHeader = ['Datum', 'Uhrzeit', 'Transponder-ID', 'Standort/Bezeichnung', 'Meisterei', 'Los', 'Behältertyp', 'Ereignis/Besonderheit', 'Bemerkung', 'Auftraggeber', 'Auftragnehmer', 'Vertragsnummer', 'Norm'];
     const detailRows = gefilterteDaten.map(l => {
       const cleanId = String(l.behaelter_id || '').trim().toUpperCase();
@@ -747,7 +760,7 @@ async function exportCSV() {
   }
 }
 
-// 2. PDF EXPORT MIT ZUSAMMENFASSUNG PRO ANLAGE & TAG + EINZELNACHWEIS
+// 2. PDF EXPORT MIT ZUSAMMENFASSUNG PRO ANLAGE & TAG + EINZELNACHWEIS (NACH DATUM SORTIERT)
 async function exportPDF() {
   const mo = document.getElementById('exp-monat').value;
   const ag = document.getElementById('exp-ag').value;
@@ -784,9 +797,12 @@ async function exportPDF() {
       return;
     }
 
+    // Chronologisch nach Datum & Uhrzeit sortieren
+    gefilterteDaten = sortiereNachDatum(gefilterteDaten);
+
     const total = gefilterteDaten.length;
 
-    // 1. Zusammenfassung pro Anlage & Tag generieren
+    // 1. Zusammenfassung pro Anlage & Tag generieren (bereits nach Datum sortiert)
     const zusammenfassung = gruppiereNachAnlageUndTag(gefilterteDaten, stammMap);
     const sumRows = zusammenfassung.map(g => `
       <tr>
@@ -799,7 +815,7 @@ async function exportPDF() {
       </tr>
     `).join('');
 
-    // 2. Einzelnachweise generieren
+    // 2. Einzelnachweise generieren (nach Datum & Uhrzeit sortiert)
     const detailRows = gefilterteDaten.map(l => {
       const cleanId = String(l.behaelter_id || '').trim().toUpperCase();
       const b = stammMap[cleanId] || {};
