@@ -681,6 +681,214 @@ async function exportCSV() {
       return true;
     });
 
+    let gefilterteDaten = cloudLeerungen.filter(l => {
+      const cleanId = String(l.behaelter_id || '').trim().toUpperCase();
+      const b = stammMap[cleanId] || {};
+      const datum = l.datum || '';
+      
+      if (mo && !datum.startsWith(mo)) return false;
+      if (ag && (b.meisterei || '').toLowerCase().trim() !== ag.toLowerCase().trim()) return false;
+      return true;
+    });
+
     if (gefilterteDaten.length === 0) {
       alert(`Keine Leerungen für Zeitraum "${mo || 'Gesamt'}" und Meisterei "${ag || 'Alle'}" in Supabase gefunden.`);
-      return
+      return;
+    }
+
+    const total = gefilterteDaten.length;
+
+    // 1. Zusammenfassung pro Anlage & Tag generieren
+    const zusammenfassung = gruppiereNachAnlageUndTag(gefilterteDaten, stammMap);
+    const sumRows = zusammenfassung.map(g => `
+      <tr>
+        <td><strong>${escapeHtml(g.datumDE)}</strong></td>
+        <td>${escapeHtml(g.anlage)}</td>
+        <td>${escapeHtml(g.meisterei)}</td>
+        <td>${escapeHtml(g.los)}</td>
+        <td><strong>${g.anzahl}×</strong></td>
+        <td style="color:#444;">Am ${escapeHtml(g.datumDE)} haben in der Anlage <strong>${escapeHtml(g.anlage)}</strong> der ${escapeHtml(g.meisterei)} insgesamt <strong>${g.anzahl} Entleerungen</strong> stattgefunden.</td>
+      </tr>
+    `).join('');
+
+    // 2. Einzelnachweise generieren
+    const detailRows = gefilterteDaten.map(l => {
+      const cleanId = String(l.behaelter_id || '').trim().toUpperCase();
+      const b = stammMap[cleanId] || {};
+      return `
+        <tr>
+          <td>${escapeHtml(formatDatumDE(l.datum))} ${escapeHtml(l.uhrzeit || '–')}</td>
+          <td><strong>${escapeHtml(l.behaelter_id || '')}</strong></td>
+          <td>${escapeHtml(b.name || '–')}</td>
+          <td>${escapeHtml(b.meisterei || '–')}</td>
+          <td>${escapeHtml(b.los || '–')}</td>
+          <td>${escapeHtml(l.ereignis || 'Reguläre Leerung')}</td>
+          <td>${escapeHtml(l.bemerkung || '')}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+    <html lang="de">
+    <head>
+      <meta charset="UTF-8">
+      <title>Leerungsnachweis DIN 14803</title>
+      <style>
+        body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#1a1a1a}
+        h1{font-size:18px;margin-bottom:4px}
+        h2{font-size:14px;margin-top:24px;margin-bottom:8px;color:#0C447C;border-bottom:1px solid #dbeafe;padding-bottom:4px}
+        .subtitle{color:#555;font-size:13px;margin-bottom:18px}
+        .meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 40px;font-size:12px;margin-bottom:20px;padding:12px;background:#f5f5f5;border-radius:4px}
+        .meta span{color:#555}
+        .norm-badge{display:inline-block;background:#dbeafe;color:#1e40af;padding:2px 10px;border-radius:4px;font-size:11px;font-weight:bold;margin-left:8px}
+        table{width:100%;border-collapse:collapse;margin-top:8px;margin-bottom:20px}
+        th{font-size:10px;text-transform:uppercase;letter-spacing:.04em;background:#f0f0f0;padding:7px 10px;border-bottom:1px solid #ddd;text-align:left}
+        td{padding:7px 10px;border-bottom:0.5px solid #eee;font-size:11.5px;vertical-align:top}
+        tr:nth-child(even) td{background:#fafafa}
+        .footer{margin-top:24px;font-size:10px;color:#888;border-top:1px solid #eee;padding-top:8px}
+        .total-row td{font-weight:bold;background:#e8f5e9;border-top:2px solid #ccc}
+        @media print{body{margin:15mm} h2{page-break-after:avoid} tr{page-break-inside:avoid}}
+      </style>
+    </head>
+    <body>
+      <h1>Leerungsnachweis <span class="norm-badge">DIN 14803</span></h1>
+      <div class="subtitle">Behälteridentifikationssystem – Monatsbericht ${escapeHtml(mo||'Gesamtzeitraum')}</div>
+      <div class="meta">
+        <div><span>Auftraggeber:</span><br><strong>${escapeHtml(ag || 'Alle Autobahnmeistereien')}</strong></div>
+        <div><span>Auftragnehmer:</span><br><strong>${escapeHtml(an)}</strong></div>
+        <div><span>Vertragsnummer:</span><br><strong>${escapeHtml(vn)}</strong></div>
+        <div><span>Berichtszeitraum:</span><br><strong>${escapeHtml(mo||'alle')}</strong></div>
+        <div><span>Erstellt am:</span><br><strong>${new Date().toLocaleDateString('de-DE')}</strong></div>
+        <div><span>Erfolgreiche Leerungen gesamt:</span><br><strong>${total}</strong></div>
+      </div>
+
+      <h2>1. Auswertung pro Anlage und Tag</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Anlage / Standort</th>
+            <th>Meisterei</th>
+            <th>Los</th>
+            <th>Anzahl</th>
+            <th>Leistungsbeschreibung</th>
+          </tr>
+        </thead>
+        <tbody>${sumRows}</tbody>
+        <tfoot>
+          <tr class="total-row">
+            <td colspan="4">Gesamtsumme (abrechenbar)</td>
+            <td>${total}×</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <h2>2. Einzelnachweis der Transponder-Scans</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Datum / Zeit</th>
+            <th>Transponder-ID</th>
+            <th>Bezeichnung</th>
+            <th>Meisterei</th>
+            <th>Los</th>
+            <th>Ereignis/Status</th>
+            <th>Bemerkung</th>
+          </tr>
+        </thead>
+        <tbody>${detailRows}</tbody>
+        <tfoot>
+          <tr class="total-row">
+            <td colspan="5">Gesamt (abrechenbar)</td>
+            <td>${total}×</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="footer">Dieses Dokument wurde automatisch aus der Supabase-Datenbank erstellt gemäß DIN 14803.</div>
+      <script>window.onload=function(){window.print();}<\/script>
+    </body>
+    </html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    } else {
+      alert('Pop-up wurde vom Browser blockiert! Bitte erlaube Pop-ups für diese Seite.');
+    }
+  } catch (err) {
+    console.error("Export-Fehler:", err.message);
+    alert("Fehler beim PDF-Export: " + err.message);
+  }
+}
+
+async function ladeExportMonate() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('leerungen')
+      .select('datum');
+
+    if (error || !data) return;
+
+    const monateSet = new Set();
+    data.forEach(item => {
+      const d = item.datum;
+      if (d && d.length >= 7) {
+        monateSet.add(d.substring(0, 7));
+      }
+    });
+
+    const monateArray = Array.from(monateSet).sort().reverse();
+    const selectEl = document.getElementById('exp-monat');
+    
+    selectEl.innerHTML = '<option value="">-- Alle Monate (Gesamt) --</option>';
+    monateArray.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      selectEl.appendChild(opt);
+    });
+
+  } catch (e) {
+    console.error("Fehler beim Laden der Monatsliste:", e);
+  }
+}
+
+function aktiviereAutoFokus() {
+  const idInput = document.getElementById('inp-behaelter');
+  if (!idInput) return;
+
+  idInput.addEventListener('blur', () => {
+    clearTimeout(focusTimeout);
+    focusTimeout = setTimeout(() => {
+      if (document.activeElement !== document.getElementById('inp-bemerkung')) {
+        idInput.focus();
+      }
+    }, 50); 
+  });
+}
+
+function resetForm() {
+  document.getElementById('inp-behaelter').value = '';
+  document.getElementById('inp-bemerkung').value = '';
+  document.getElementById('inp-ereignis').value = 'Reguläre Leerung';
+}
+
+document.getElementById('inp-behaelter').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    erfassen();
+  }
+});
+
+// INITIALISIERUNG
+updateMetrics();
+renderLetzt();
+synchronisiereOfflineEintraege();
+aktiviereAutoFokus();
+ladeBehaelterAusSupabase();
+ladeExportMonate();
+</script>
