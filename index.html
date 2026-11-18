@@ -1,4 +1,4 @@
-<h2 class="sr-only">DIN 14803 Behälteridentifikationssystem – Leerungserfassung, Übersicht und Export</h2>
+<h2 class="sr-only">Behälteridentifikationssystem – Leerungserfassung, Übersicht und Export</h2>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -70,7 +70,7 @@ tr.storniert-row td{color:var(--color-text-tertiary) !important;opacity:0.5;text
   <div class="topbar-title">
     <i class="ti ti-database" style="font-size:18px" aria-hidden="true"></i>
     Behälteridentifikation
-    <span class="badge-norm">DIN 14803</span>
+    <span class="badge-norm">Savova GmbH</span>
   </div>
   <nav class="nav">
     <button class="active" onclick="showPanel('erfassung',this)"><i class="ti ti-plus" aria-hidden="true"></i> Erfassung</button>
@@ -98,7 +98,7 @@ tr.storniert-row td{color:var(--color-text-tertiary) !important;opacity:0.5;text
         <input type="text" id="inp-behaelter" placeholder="Warte auf RFID-Scan..." autofocus>
       </div>
       <div class="form-group">
-        <label>Besonderheiten / Ereignis (nach DIN 14803)</label>
+        <label>Besonderheiten / Ereignis</label>
         <select id="inp-ereignis">
           <option value="Reguläre Leerung">-- Reguläre, glatte Leerung --</option>
           <option value="Behälter nicht bereitgestellt">Behälter nicht bereitgestellt</option>
@@ -200,7 +200,7 @@ tr.storniert-row td{color:var(--color-text-tertiary) !important;opacity:0.5;text
       <div class="export-card">
         <div class="export-info">
           <p><i class="ti ti-file-spreadsheet" style="color:#3B6D11;vertical-align:-2px;margin-right:6px" aria-hidden="true"></i>CSV-Export</p>
-          <span>Bearbeitbares Format – DIN 14803 §4.2</span>
+          <span>Bearbeitbares Format</span>
         </div>
         <button class="btn btn-success" onclick="exportCSV()"><i class="ti ti-download" aria-hidden="true"></i> CSV</button>
       </div>
@@ -208,7 +208,7 @@ tr.storniert-row td{color:var(--color-text-tertiary) !important;opacity:0.5;text
       <div class="export-card">
         <div class="export-info">
           <p><i class="ti ti-file-text" style="color:#185FA5;vertical-align:-2px;margin-right:6px" aria-hidden="true"></i>PDF-Bericht</p>
-          <span>Druckbarer Nachweis – DIN 14803 §4.1</span>
+          <span>Nachweis</span>
         </div>
         <button class="btn btn-primary" onclick="exportPDF()"><i class="ti ti-printer" aria-hidden="true"></i> PDF</button>
       </div>
@@ -728,7 +728,7 @@ async function exportCSV() {
         ag || b.meisterei || '–',
         an,
         vn,
-        'DIN 14803'
+        'Savova GmbH'
       ].join(';');
     });
 
@@ -737,7 +737,7 @@ async function exportCSV() {
       sumHeader.join(';'),
       ...sumRows,
       '',
-      'EINZELNACHWEIS (DIN 14803)',
+      'EINZELNACHWEIS',
       detailHeader.join(';'),
       ...detailRows
     ].join('\n');
@@ -836,7 +836,7 @@ async function exportPDF() {
     <html lang="de">
     <head>
       <meta charset="UTF-8">
-      <title>Leerungsnachweis DIN 14803</title>
+      <title>Leerungsnachweis</title>
       <style>
         body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#1a1a1a}
         h1{font-size:18px;margin-bottom:4px}
@@ -855,7 +855,7 @@ async function exportPDF() {
       </style>
     </head>
     <body>
-      <h1>Leerungsnachweis <span class="norm-badge">DIN 14803</span></h1>
+      <h1>Leerungsnachweis <span class="norm-badge">Savova GmbH</span></h1>
       <div class="subtitle">Behälteridentifikationssystem – Monatsbericht ${escapeHtml(mo||'Gesamtzeitraum')}</div>
       <div class="meta">
         <div><span>Auftraggeber:</span><br><strong>${escapeHtml(ag || 'Alle Autobahnmeistereien')}</strong></div>
@@ -911,7 +911,7 @@ async function exportPDF() {
         </tfoot>
       </table>
 
-      <div class="footer">Dieses Dokument wurde automatisch aus der Supabase-Datenbank erstellt gemäß DIN 14803.</div>
+      <div class="footer">Dieses Dokument wurde automatisch aus der Datenbank erstellt.</div>
       ${'<' + 'script>window.onload=function(){window.print();}<' + '/script>'}
     </body>
     </html>`;
