@@ -617,6 +617,26 @@ function formatDatumDE(isoDate) {
   return isoDate;
 }
 
+// Hilfsfunktion: Entfernt doppelte Scans mit gleichem Datum, Uhrzeit, Anlage, AM und Transponder-ID
+function entferneDoppelteScans(daten, stammMap) {
+  const gesehen = new Set();
+  return daten.filter(l => {
+    const cleanId = String(l.behaelter_id || '').trim().toUpperCase();
+    const b = stammMap[cleanId] || {};
+    const datum = String(l.datum || '').trim();
+    const uhrzeit = String(l.uhrzeit || '').trim().substring(0, 5);
+    const anlage = String(b.name || '').trim().toLowerCase();
+    const meisterei = String(b.meisterei || '').trim().toLowerCase();
+
+    const schluessel = `${datum}|${uhrzeit}|${anlage}|${meisterei}|${cleanId}`;
+    if (gesehen.has(schluessel)) {
+      return false;
+    }
+    gesehen.add(schluessel);
+    return true;
+  });
+}
+
 // Hilfsfunktion: Sortiert Einzelnachweise chronologisch nach Datum & Uhrzeit aufsteigend
 function sortiereNachDatum(daten) {
   return [...daten].sort((a, b) => {
@@ -658,7 +678,7 @@ function gruppiereNachAnlageUndTag(gefilterteDaten, stammMap) {
   });
 }
 
-// 1. CSV EXPORT MIT ZUSAMMENFASSUNG PRO ANLAGE & TAG + EINZELNACHWEIS (NACH DATUM SORTIERT)
+// 1. CSV EXPORT MIT ZUSAMMENFASSUNG PRO ANLAGE & TAG + EINZELNACHWEIS
 async function exportCSV() {
   const mo = document.getElementById('exp-monat').value;
   const ag = document.getElementById('exp-ag').value;
@@ -690,15 +710,15 @@ async function exportCSV() {
       return true;
     });
 
+    gefilterteDaten = entferneDoppelteScans(gefilterteDaten, stammMap);
+
     if (gefilterteDaten.length === 0) {
       alert(`Keine Leerungen für Zeitraum "${mo || 'Gesamt'}" und Meisterei "${ag || 'Alle'}" in Supabase gefunden.`);
       return;
     }
 
-    // Chronologisch nach Datum & Uhrzeit sortieren
     gefilterteDaten = sortiereNachDatum(gefilterteDaten);
 
-    // Gruppierte Zusammenfassung pro Tag & Anlage (bereits nach Datum sortiert)
     const zusammenfassung = gruppiereNachAnlageUndTag(gefilterteDaten, stammMap);
     const sumHeader = ['Datum', 'Anlage / Standort', 'Autobahnmeisterei', 'Los', 'Anzahl Entleerungen', 'Beschreibung'];
     const sumRows = zusammenfassung.map(g => [
@@ -710,8 +730,7 @@ async function exportCSV() {
       `Am ${g.datumDE} haben in der Anlage ${g.anlage} der ${g.meisterei} insgesamt ${g.anzahl} Entleerungen stattgefunden.`
     ].join(';'));
 
-    // Einzelnachweise (nach Datum & Uhrzeit sortiert)
-    const detailHeader = ['Datum', 'Uhrzeit', 'Transponder-ID', 'Standort/Bezeichnung', 'Meisterei', 'Los', 'Behältertyp', 'Ereignis/Besonderheit', 'Bemerkung', 'Auftraggeber', 'Auftragnehmer', 'Vertragsnummer', 'Norm'];
+    const detailHeader = ['Datum', 'Uhrzeit', 'Transponder-ID', 'Standort/Bezeichnung', 'Meisterei', 'Los', 'Behältertyp', 'Ereignis/Besonderheit', 'Bemerkung', 'Auftraggeber', 'Auftragnehmer', 'Vertragsnummer', 'Anbieter'];
     const detailRows = gefilterteDaten.map(l => {
       const cleanId = String(l.behaelter_id || '').trim().toUpperCase();
       const b = stammMap[cleanId] || {};
@@ -748,7 +767,7 @@ async function exportCSV() {
     a.href = url;
     
     const meistereiNameClean = ag ? `_${ag.replace(/\s+/g, '_')}` : '';
-    a.download = `Leerungsnachweis_DIN14803_${mo || 'gesamt'}${meistereiNameClean}.csv`;
+    a.download = `Leerungsnachweis_Savova_${mo || 'gesamt'}${meistereiNameClean}.csv`;
     
     a.click();
     URL.revokeObjectURL(url);
@@ -760,7 +779,7 @@ async function exportCSV() {
   }
 }
 
-// 2. PDF EXPORT MIT ZUSAMMENFASSUNG PRO ANLAGE & TAG + EINZELNACHWEIS (NACH DATUM SORTIERT)
+// 2. PDF EXPORT MIT ZUSAMMENFASSUNG PRO ANLAGE & TAG + EINZELNACHWEIS
 async function exportPDF() {
   const mo = document.getElementById('exp-monat').value;
   const ag = document.getElementById('exp-ag').value;
@@ -792,17 +811,17 @@ async function exportPDF() {
       return true;
     });
 
+    gefilterteDaten = entferneDoppelteScans(gefilterteDaten, stammMap);
+
     if (gefilterteDaten.length === 0) {
       alert(`Keine Leerungen für Zeitraum "${mo || 'Gesamt'}" und Meisterei "${ag || 'Alle'}" in Supabase gefunden.`);
       return;
     }
 
-    // Chronologisch nach Datum & Uhrzeit sortieren
     gefilterteDaten = sortiereNachDatum(gefilterteDaten);
 
     const total = gefilterteDaten.length;
 
-    // 1. Zusammenfassung pro Anlage & Tag generieren (bereits nach Datum sortiert)
     const zusammenfassung = gruppiereNachAnlageUndTag(gefilterteDaten, stammMap);
     const sumRows = zusammenfassung.map(g => `
       <tr>
@@ -815,7 +834,6 @@ async function exportPDF() {
       </tr>
     `).join('');
 
-    // 2. Einzelnachweise generieren (nach Datum & Uhrzeit sortiert)
     const detailRows = gefilterteDaten.map(l => {
       const cleanId = String(l.behaelter_id || '').trim().toUpperCase();
       const b = stammMap[cleanId] || {};
@@ -836,7 +854,7 @@ async function exportPDF() {
     <html lang="de">
     <head>
       <meta charset="UTF-8">
-      <title>Leerungsnachweis</title>
+      <title>Leerungsnachweis – Savova GmbH</title>
       <style>
         body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#1a1a1a}
         h1{font-size:18px;margin-bottom:4px}
@@ -911,7 +929,7 @@ async function exportPDF() {
         </tfoot>
       </table>
 
-      <div class="footer">Dieses Dokument wurde automatisch aus der Datenbank erstellt.</div>
+      <div class="footer">Dieses Dokument wurde automatisch aus der Supabase-Datenbank erstellt.</div>
       ${'<' + 'script>window.onload=function(){window.print();}<' + '/script>'}
     </body>
     </html>`;
